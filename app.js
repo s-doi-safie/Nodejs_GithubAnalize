@@ -19,14 +19,8 @@ app.use(express.json());
 // チーム情報を提供するエンドポイント
 app.get("/api/teams", cors(), async (req, res) => {
   try {
-    // Pythonスクリプトを実行してチーム情報を取得
-    const { stdout, stderr } = await execPromise(
-      'venv\\Scripts\\python.exe -c "import config; import json; print(json.dumps(config.teams))"'
-    );
-    if (stderr) {
-      console.log("Python logs:", stderr);
-    }
-    const teams = JSON.parse(stdout);
+    const data = await fs.readFile("teams.json", "utf8");
+    const teams = JSON.parse(data);
     res.json({ teams });
   } catch (err) {
     console.error("Error getting teams:", err);
@@ -40,9 +34,7 @@ app.post("/update-teams", async (req, res) => {
     console.log("チーム情報を更新中...");
 
     // get_team.pyを実行してチーム情報を更新
-    const { stdout, stderr } = await execPromise(
-      "venv\\Scripts\\python.exe get_team.py"
-    );
+    const { stdout, stderr } = await execPromise("python get_team.py");
 
     // Pythonコードのログメッセージを出力
     if (stderr) {
@@ -65,7 +57,7 @@ app.post("/run-python", async (req, res) => {
   try {
     console.log("Fetching data from Github...");
     const { fromDate, toDate, team } = req.body;
-    let command = `venv\\Scripts\\python.exe fetch_pr_data.py "${fromDate}" "${toDate}"`;
+    let command = `python fetch_pr_data.py "${fromDate}" "${toDate}"`;
 
     // チームが指定されている場合は、コマンドにチームパラメータを追加
     if (team && team !== "all") {

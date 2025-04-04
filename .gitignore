@@ -3,3 +3,4 @@ node_modules
 config.py
 *.json
 github_data.json
+__pycache__/

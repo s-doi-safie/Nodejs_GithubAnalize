@@ -3,8 +3,8 @@ const path = require("path");
 const cors = require("cors");
 const util = require("util");
 const fs = require("fs").promises;
-// child_processモジュールからexec関数をインポート
 const { exec } = require("child_process");
+const { spawn } = require("child_process");
 
 const app = express();
 const port = 4001;
@@ -16,12 +16,63 @@ app.use(express.static("public"));
 app.use(cors());
 app.use(express.json());
 
+// チーム情報を提供するエンドポイント
+app.get("/api/teams", cors(), async (req, res) => {
+  try {
+    // Pythonスクリプトを実行してチーム情報を取得
+    const { stdout, stderr } = await execPromise(
+      'venv\\Scripts\\python.exe -c "import config; import json; print(json.dumps(config.teams))"'
+    );
+    if (stderr) {
+      console.log("Python logs:", stderr);
+    }
+    const teams = JSON.parse(stdout);
+    res.json({ teams });
+  } catch (err) {
+    console.error("Error getting teams:", err);
+    res.status(500).json({ error: "Error getting teams" });
+  }
+});
+
+// チーム情報を更新するエンドポイント
+app.post("/update-teams", async (req, res) => {
+  try {
+    console.log("チーム情報を更新中...");
+
+    // get_team.pyを実行してチーム情報を更新
+    const { stdout, stderr } = await execPromise(
+      "venv\\Scripts\\python.exe get_team.py"
+    );
+
+    // Pythonコードのログメッセージを出力
+    if (stderr) {
+      console.log("Python logs:", stderr);
+    }
+
+    console.log("チーム情報の更新が完了しました");
+    return res.json({
+      message: "チーム情報が正常に更新されました",
+      data: stdout,
+    });
+  } catch (error) {
+    console.error(`Error: ${error}`);
+    return res.status(500).json({ error: "チーム情報の更新に失敗しました" });
+  }
+});
+
 // PythonでGithubのデータを更新するエンドポイント
 app.post("/run-python", async (req, res) => {
   try {
     console.log("Fetching data from Github...");
-    const { fromDate, toDate } = req.body;
-    const { stdout, stderr } = await execPromise(`python3 fetch_pr_data.py "${fromDate}" "${toDate}"`);
+    const { fromDate, toDate, team } = req.body;
+    let command = `venv\\Scripts\\python.exe fetch_pr_data.py "${fromDate}" "${toDate}"`;
+
+    // チームが指定されている場合は、コマンドにチームパラメータを追加
+    if (team && team !== "all") {
+      command += ` "${team}"`;
+    }
+
+    const { stdout, stderr } = await execPromise(command);
     // Pythonコードのログメッセージを出力
     if (stderr) {
       console.log("Python logs:", stderr);

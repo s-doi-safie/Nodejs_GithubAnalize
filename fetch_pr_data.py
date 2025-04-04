@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import config as cfg
 import numpy as np  # 40 ms
 import requests
-from holiday_jp import HolidayJp
+# from holiday_jp import HolidayJp
 from tqdm import tqdm
 
 
@@ -44,9 +44,9 @@ class PullRequest:
         else:
             end_dt = self.closed
 
-        for dt in self.daterange(self.created, end_dt):
-            if not HolidayJp(dt.date()).is_business_day:
-                end_dt -= timedelta(days=1)
+        # for dt in self.daterange(self.created, end_dt):
+        #     if not HolidayJp(dt.date()).is_business_day:
+        #         end_dt -= timedelta(days=1)
         return end_dt - self.created
 
     def first_review_elapsed_business_days(self) -> timedelta:
@@ -55,9 +55,9 @@ class PullRequest:
         else:
             end_dt = self.first_review
 
-        for dt in self.daterange(self.created, end_dt):
-            if not HolidayJp(dt.date()).is_business_day:
-                end_dt -= timedelta(days=1)
+        # for dt in self.daterange(self.created, end_dt):
+        #     if not HolidayJp(dt.date()).is_business_day:
+        #         end_dt -= timedelta(days=1)
         return end_dt - self.created
 
 
@@ -309,10 +309,11 @@ def get_github_data(
     from_date,
     to_date,
     pr_details,
+    team_name=None,
 ):
     authors = [author.replace("-safie", "") for author in authors]
     authors = [author.replace("-sf", "") for author in authors]
-    return {
+    result = {
         "period": [from_date, to_date],
         "labels": authors,
         "datasets": [
@@ -331,6 +332,12 @@ def get_github_data(
         ],
         "pr_details": pr_details,
     }
+    
+    # チーム名が指定されている場合は、結果に含める
+    if team_name:
+        result["team"] = team_name
+        
+    return result
 
 
 # Excute main
@@ -338,6 +345,8 @@ def main():
     if len(sys.argv) > 1:
         from_date = sys.argv[1]
         to_date = sys.argv[2]
+        # チームパラメータが指定されている場合は取得
+        team_name = sys.argv[3] if len(sys.argv) > 3 else None
     try:
         datetime.strptime(from_date, "%Y-%m-%d")
         datetime.strptime(to_date, "%Y-%m-%d")
@@ -346,7 +355,23 @@ def main():
         sys.exit(1)
 
     token = cfg.github_token
-    authors = cfg.authors
+    # チーム設定
+    with open("teams.json", "r", encoding="utf-8") as f:
+        teams = json.load(f)
+
+    # デフォルトの著者リスト（後方互換性のため）
+    authors = []
+    for team_members in teams.values():
+        authors.extend(team_members)
+    authors = list(set(authors))  # 重複を削除
+
+    # チームが指定されている場合は、そのチームのユーザーのみを使用
+    if team_name and team_name in teams:
+        authors = teams[team_name]
+        print(f"Using team: {team_name} with {len(authors)} members")
+    else:
+        team_name = None
+        print(f"Using all authors: {len(authors)} members")
 
     # Load search API cache
     search_api_cache_filename = "search_api_cache.json"
@@ -449,8 +474,9 @@ def main():
         from_date,
         to_date,
         pr_details,
+        team_name,
     )
-    json.dump(data, open("github_data.json", "w"), indent=2, ensure_ascii=False)
+    json.dump(data, open("github_data.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":

@@ -89,6 +89,7 @@ h1 {
 }
 
 
+#teamSelect,
 #fromDateInput,
 #toDateInput {
   margin: 0 10px;
@@ -97,6 +98,10 @@ h1 {
   font-size: 12px;
   border: 1px solid #ccc;
   border-radius: 5px;
+}
+
+#teamSelect {
+  min-width: 120px;
 }
 
 .loading-container {

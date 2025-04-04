@@ -1,60 +1,143 @@
 // ページ読み込み時にも初期データを表示
 document.addEventListener("DOMContentLoaded", () => {
+  loadTeams();
   setDefaultDates();
   updateChart();
 });
 
-// 手動日付選択のボタンクリック処理
-document.getElementById("runButton").addEventListener("click", () => {
-  const fromDate = document.getElementById("fromDateInput").value;
-  const toDate = document.getElementById("toDateInput").value;
-
-  if (!fromDate || !toDate) {
-    alert("両方の日付を選択してください");
-    return;
-  }
-
-  fetchGithubData(fromDate, toDate);
+// チーム情報更新ボタンのクリックイベント
+document.getElementById("updateTeamsButton").addEventListener("click", () => {
+  updateTeamInfo();
 });
 
-// 週間ボタンクリック処理
-document.getElementById("weekly-btn").addEventListener("click", () => {
-  const toDate = new Date().toISOString().split('T')[0];
-  const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-  fetchGithubData(fromDate, toDate);
-});
-
-// 月間ボタンクリック処理
-document.getElementById("monthly-btn").addEventListener("click", () => {
-  const toDate = new Date().toISOString().split('T')[0];
-  const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-  fetchGithubData(fromDate, toDate);
-});
-
-function fetchGithubData(fromDate, toDate) {
+// チーム情報を更新する関数
+function updateTeamInfo() {
   const resultDiv = document.getElementById("result");
-  const loading = document.getElementById('loading');
+  const loading = document.getElementById("loading");
 
-  resultDiv.textContent = "Fetching data from Github...";
+  resultDiv.textContent = "チーム情報を更新中...";
   resultDiv.style.visibility = "visible";
-  loading.style.display = 'block';
+  loading.style.display = "block";
 
-  fetch("/run-python", {
+  fetch("/update-teams", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ fromDate, toDate }),
   })
     .then((response) => response.json())
     .then((data) => {
       if (data.error) {
         throw new Error(data.error);
       }
+
+      // チーム情報を再読み込み
+      loadTeams();
+
+      resultDiv.textContent = "チーム情報が正常に更新されました";
+      setTimeout(() => {
+        resultDiv.style.visibility = "hidden"; // 3秒後に非表示
+      }, 5000);
+    })
+    .catch((error) => {
+      console.error("Error:", error);
+      resultDiv.textContent = "チーム情報の更新に失敗しました";
+    })
+    .finally(() => {
+      loading.style.display = "none";
+    });
+}
+
+// チーム情報を取得する関数
+function loadTeams() {
+  fetch("/api/teams", {
+    method: "GET",
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      const teamSelect = document.getElementById("teamSelect");
+      const teams = data.teams;
+
+      // チーム選択肢を追加
+      for (const teamName in teams) {
+        const option = document.createElement("option");
+        option.value = teamName;
+        option.textContent = teamName;
+        teamSelect.appendChild(option);
+      }
+    })
+    .catch((error) => {
+      console.error("Error loading teams:", error);
+    });
+}
+
+// 手動日付選択のボタンクリック処理
+document.getElementById("runButton").addEventListener("click", () => {
+  const fromDate = document.getElementById("fromDateInput").value;
+  const toDate = document.getElementById("toDateInput").value;
+  const team = document.getElementById("teamSelect").value;
+
+  if (!fromDate || !toDate) {
+    alert("両方の日付を選択してください");
+    return;
+  }
+
+  fetchGithubData(fromDate, toDate, team);
+});
+
+// 週間ボタンクリック処理
+document.getElementById("weekly-btn").addEventListener("click", () => {
+  const toDate = new Date().toISOString().split("T")[0];
+  const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
+  const team = document.getElementById("teamSelect").value;
+
+  fetchGithubData(fromDate, toDate, team);
+});
+
+// 月間ボタンクリック処理
+document.getElementById("monthly-btn").addEventListener("click", () => {
+  const toDate = new Date().toISOString().split("T")[0];
+  const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .split("T")[0];
+  const team = document.getElementById("teamSelect").value;
+
+  fetchGithubData(fromDate, toDate, team);
+});
+
+// チーム選択時の処理
+document.getElementById("teamSelect").addEventListener("change", () => {
+  const fromDate = document.getElementById("fromDateInput").value;
+  const toDate = document.getElementById("toDateInput").value;
+  const team = document.getElementById("teamSelect").value;
+
+  if (fromDate && toDate) {
+    fetchGithubData(fromDate, toDate, team);
+  }
+});
+
+function fetchGithubData(fromDate, toDate, team) {
+  const resultDiv = document.getElementById("result");
+  const loading = document.getElementById("loading");
+
+  resultDiv.textContent = "Fetching data from Github...";
+  resultDiv.style.visibility = "visible";
+  loading.style.display = "block";
+
+  fetch("/run-python", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ fromDate, toDate, team }),
+  })
+    .then((response) => response.json())
+    .then((data) => {
+      if (data.error) {
+        showResult(data.error);
+        throw new Error(data.error);
+      }
       try {
-        showResult();
+        showResult("Successfully data updated");
         updateChart();
       } catch (error) {
         console.error("Error:", error);
@@ -64,7 +147,7 @@ function fetchGithubData(fromDate, toDate) {
       console.error("Error:", error);
     })
     .finally(() => {
-      loading.style.display = 'none';
+      loading.style.display = "none";
     });
 }
 
@@ -76,7 +159,7 @@ function updateChart() {
     .then((data) => {
       const ctx = document.getElementById("reviewChart").getContext("2d");
       data.datasets = [data.datasets[2], data.datasets[1], data.datasets[0]];
-      data.datasets[0].backgroundColor = "#439D64";;
+      data.datasets[0].backgroundColor = "#439D64";
       data.datasets[1].backgroundColor = "#FF6565";
       data.datasets[2].backgroundColor = "#40A2C0";
       const fromDate = data["period"][0];
@@ -108,10 +191,10 @@ function updateChart() {
           plugins: {
             title: {
               display: true,
-              text: "Review Activity in AI Vision from " + fromDate + " to " + toDate,
+              text: getChartTitle(data, fromDate, toDate),
               font: {
                 size: 20,
-              }
+              },
             },
             tooltip: {
               mode: "index",
@@ -133,7 +216,8 @@ function updateChart() {
     })
     .catch((error) => {
       console.error("Error:", error);
-      document.getElementById("result").textContent = "Failed to fetch or display data";
+      document.getElementById("result").textContent =
+        "Failed to fetch or display data";
     });
 }
 
@@ -147,7 +231,9 @@ function showAuthorPRs(person) {
       const prData = data["pr_details"];
       const authorPrs = prData.filter((item) => item.author.includes(person));
       // const requestedPrs = prData.filter((item) => item.requested.includes(person));
-      const requestedPrs = prData.filter((item) => item.requested.some((req) => req.includes(person)));
+      const requestedPrs = prData.filter((item) =>
+        item.requested.some((req) => req.includes(person))
+      );
       displayOnModal(person, authorPrs, requestedPrs);
     })
     .catch((error) => {
@@ -199,24 +285,21 @@ function insertPRData(prs, tbody) {
     let num_comments;
     if (pr.num_comments === null) {
       num_comments = 0;
-    }
-    else {
+    } else {
       num_comments = pr.num_comments;
     }
 
-    let lifetime
+    let lifetime;
     if (pr.lifetime_day === null) {
       lifetime = "-";
-    }
-    else {
+    } else {
       lifetime = pr.lifetime_day * 24 + pr.lifetime_hour + "h";
     }
 
-    let first_review
+    let first_review;
     if (pr.first_review_min === null) {
       first_review = "-";
-    }
-    else {
+    } else {
       first_review = pr.first_review_hour + "h" + pr.first_review_min + "m";
     }
 
@@ -256,10 +339,13 @@ function displayOnModal(person, authorPrs, requestedPrs) {
 
   // モーダルコンテンツにPR情報を追加
   modalContent.innerHTML = "";
-  modalContent.appendChild(document.createElement("h2")).textContent = `${person}'s PRs`;
+  modalContent.appendChild(
+    document.createElement("h2")
+  ).textContent = `${person}'s PRs`;
   modalContent.appendChild(document.createElement("h3")).textContent = "Author";
   modalContent.appendChild(authorTableContent);
-  modalContent.appendChild(document.createElement("h3")).textContent = "Requested";
+  modalContent.appendChild(document.createElement("h3")).textContent =
+    "Requested";
   modalContent.appendChild(requestedTableContent);
 
   // モーダルを表示
@@ -267,9 +353,9 @@ function displayOnModal(person, authorPrs, requestedPrs) {
 }
 
 // データ更新の結果を表示する関数
-function showResult() {
+function showResult(text) {
   const resultDiv = document.getElementById("result");
-  resultDiv.textContent = "Successfully data updated";
+  resultDiv.textContent = text;
   resultDiv.style.visibility = "visible"; // 表示
   setTimeout(() => {
     resultDiv.style.visibility = "hidden"; // 3秒後に非表示
@@ -289,7 +375,7 @@ function setDefaultDates() {
       const fromDateInput = document.getElementById("fromDateInput");
       fromDateInput.value = fromDate;
       toDateInput.value = toDate;
-    })
+    });
 }
 
 // 日付をYYYY-MM-DD形式にフォーマットする関数
@@ -318,7 +404,11 @@ function calcMaxPrNum(prData) {
   let maxPrNum = 0;
   for (let memberIdx = 0; memberIdx < prData.labels.length; memberIdx++) {
     let sum = 0;
-    for (let datasetIdx = 0; datasetIdx < prData.datasets.length; datasetIdx++) {
+    for (
+      let datasetIdx = 0;
+      datasetIdx < prData.datasets.length;
+      datasetIdx++
+    ) {
       prNum = prData.datasets[datasetIdx].data[memberIdx];
       sum += prNum;
     }
@@ -327,4 +417,20 @@ function calcMaxPrNum(prData) {
     }
   }
   return maxPrNum;
+}
+
+// チャートのタイトルを生成する関数
+function getChartTitle(data, fromDate, toDate) {
+  let title = "Review Activity";
+
+  // チーム名が含まれている場合は、タイトルに追加
+  if (data.team) {
+    title += ` in ${data.team} Team`;
+  } else {
+    title += " in All Teams";
+  }
+
+  title += ` from ${fromDate} to ${toDate}`;
+
+  return title;
 }

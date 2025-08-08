@@ -1,0 +1,57 @@
+# このファイルをterraform.tfvarsにコピーして、実際の値を設定してください
+
+# 基本設定
+project_name = "github-analyzer"
+environment  = "dev"  # dev, staging, production
+aws_region   = "ap-northeast-1"
+
+# GitHub設定
+github_token        = "ghp_YOUR_GITHUB_TOKEN_HERE"  # 実際のGitHubトークンに置き換え
+github_organization = "your-organization-name"       # 実際の組織名に置き換え
+
+# Lambda設定
+lambda_timeout     = 60
+lambda_memory_size = 512
+
+# DynamoDB設定
+enable_dynamodb_backup = false  # 本番環境では true を推奨
+
+# CloudWatch Logs設定
+log_retention_days = 14  # dev: 7-14日, production: 30-365日
+
+# Cognito認証設定
+enable_cognito_auth        = true
+email_domain_restriction   = "company.com"  # 許可するメールドメイン
+cognito_callback_urls      = [
+  "http://localhost:3000",
+  "https://your-domain.com"
+]
+cognito_logout_urls        = [
+  "http://localhost:3000", 
+  "https://your-domain.com"
+]
+
+# CORS設定
+allowed_origins = [
+  "http://localhost:3000",
+  "https://your-domain.com"
+]
+
+# 監視・アラート設定
+enable_monitoring = true
+alert_email      = "admin@company.com"  # アラート通知用メール
+
+# セキュリティ設定
+enable_waf                        = false  # 本番環境では true を推奨
+rate_limit_requests_per_minute    = 100
+
+# カスタムドメイン設定（オプション）
+# custom_domain_name = "api.your-domain.com"
+# certificate_arn    = "arn:aws:acm:ap-northeast-1:123456789012:certificate/..."
+
+# 追加のタグ
+additional_tags = {
+  Owner       = "DevOps Team"
+  CostCenter  = "Engineering"
+  Compliance  = "GDPR"
+}

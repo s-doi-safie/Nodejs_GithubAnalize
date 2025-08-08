@@ -1,0 +1,395 @@
+name: AWS GitHub Analyzer Deploy
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'aws/**'
+      - '.github/workflows/aws-deploy.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'aws/**'
+      - '.github/workflows/aws-deploy.yml'
+
+env:
+  NODE_VERSION: '18'
+  TERRAFORM_VERSION: '1.6.0'
+
+jobs:
+  # テストとビルド
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./aws
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: 'aws/lambda/package-lock.json'
+
+      - name: Install Lambda dependencies
+        working-directory: ./aws/lambda
+        run: |
+          npm ci --production
+
+      - name: Run tests (if available)
+        working-directory: ./aws/lambda
+        run: |
+          # テストがある場合は実行
+          if [ -f "package.json" ] && npm run | grep -q "test"; then
+            npm test
+          else
+            echo "No tests found, skipping..."
+          fi
+
+      - name: Build Lambda package
+        working-directory: ./aws/lambda
+        run: |
+          echo "Building Lambda deployment package..."
+          
+          # 不要なファイルを除外してzipを作成
+          zip -r deployment.zip . \
+            -x "*.zip" \
+            -x "node_modules/.cache/*" \
+            -x "*.md" \
+            -x ".git*" \
+            -x "test/*" \
+            -x "tests/*" \
+            -x "*.test.js"
+          
+          # パッケージサイズを確認
+          ls -lh deployment.zip
+          echo "Package size: $(du -h deployment.zip | cut -f1)"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: lambda-deployment-${{ github.sha }}
+          path: aws/lambda/deployment.zip
+          retention-days: 7
+
+  # Terraform Plan（PR時）
+  terraform-plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    defaults:
+      run:
+        working-directory: ./aws/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: lambda-deployment-${{ github.sha }}
+          path: aws/lambda/
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="region=${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+
+      - name: Terraform Format Check
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Create terraform.tfvars
+        run: |
+          cat > terraform.tfvars << EOF
+          project_name = "${{ vars.PROJECT_NAME || 'github-analyzer' }}"
+          environment = "${{ vars.ENVIRONMENT || 'dev' }}"
+          aws_region = "${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+          github_token = "${{ secrets.GITHUB_TOKEN_FOR_API }}"
+          github_organization = "${{ vars.GITHUB_ORGANIZATION }}"
+          enable_cognito_auth = ${{ vars.ENABLE_COGNITO_AUTH || 'true' }}
+          email_domain_restriction = "${{ vars.EMAIL_DOMAIN_RESTRICTION || '' }}"
+          cognito_callback_urls = ${{ vars.COGNITO_CALLBACK_URLS || '["http://localhost:3000"]' }}
+          cognito_logout_urls = ${{ vars.COGNITO_LOGOUT_URLS || '["http://localhost:3000"]' }}
+          allowed_origins = ${{ vars.ALLOWED_ORIGINS || '["*"]' }}
+          EOF
+
+      - name: Terraform Plan
+        id: plan
+        run: |
+          terraform plan -detailed-exitcode -out=tfplan
+          echo "terraform_plan_exit_code=$?" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload Terraform Plan
+        uses: actions/upload-artifact@v3
+        if: steps.plan.outputs.terraform_plan_exit_code == '2'
+        with:
+          name: terraform-plan-${{ github.sha }}
+          path: aws/terraform/tfplan
+          retention-days: 7
+
+      - name: Comment PR with Plan
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Terraform planの結果を取得
+            const planExitCode = '${{ steps.plan.outputs.terraform_plan_exit_code }}';
+            let planStatus = '';
+            let planSummary = '';
+            
+            if (planExitCode === '0') {
+              planStatus = '✅ No changes';
+              planSummary = 'Terraform plan shows no changes needed.';
+            } else if (planExitCode === '2') {
+              planStatus = '📋 Changes detected';
+              planSummary = 'Terraform plan shows changes will be made.';
+            } else {
+              planStatus = '❌ Plan failed';
+              planSummary = 'Terraform plan failed. Please check the logs.';
+            }
+            
+            const comment = `## Terraform Plan Results
+            
+            ${planStatus}
+            
+            **Summary:** ${planSummary}
+            **Environment:** ${{ vars.ENVIRONMENT || 'dev' }}
+            **Region:** ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+            
+            <details>
+            <summary>Show Plan Details</summary>
+            
+            \`\`\`
+            Exit Code: ${planExitCode}
+            Commit: ${{ github.sha }}
+            \`\`\`
+            
+            </details>
+            
+            > Please review the plan carefully before merging.`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+  # Development Deploy
+  deploy-dev:
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    environment: development
+    defaults:
+      run:
+        working-directory: ./aws/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: lambda-deployment-${{ github.sha }}
+          path: aws/lambda/
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="region=${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+
+      - name: Create terraform.tfvars
+        run: |
+          cat > terraform.tfvars << EOF
+          project_name = "${{ vars.PROJECT_NAME || 'github-analyzer' }}"
+          environment = "dev"
+          aws_region = "${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+          github_token = "${{ secrets.GITHUB_TOKEN_FOR_API }}"
+          github_organization = "${{ vars.GITHUB_ORGANIZATION }}"
+          enable_cognito_auth = true
+          email_domain_restriction = "${{ vars.EMAIL_DOMAIN_RESTRICTION || '' }}"
+          cognito_callback_urls = ${{ vars.DEV_COGNITO_CALLBACK_URLS || '["http://localhost:3000"]' }}
+          cognito_logout_urls = ${{ vars.DEV_COGNITO_LOGOUT_URLS || '["http://localhost:3000"]' }}
+          allowed_origins = ["*"]
+          enable_dynamodb_backup = false
+          log_retention_days = 7
+          EOF
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve
+
+      - name: Get Terraform Outputs
+        id: terraform-outputs
+        run: |
+          echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "lambda_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+
+      - name: Deploy Success Notification
+        run: |
+          echo "🚀 Development deployment successful!"
+          echo "API URL: ${{ steps.terraform-outputs.outputs.api_url }}"
+          echo "Lambda Function: ${{ steps.terraform-outputs.outputs.lambda_name }}"
+
+  # Production Deploy
+  deploy-prod:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    needs: test-and-build
+    environment: production
+    defaults:
+      run:
+        working-directory: ./aws/terraform
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: lambda-deployment-${{ github.sha }}
+          path: aws/lambda/
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.PROD_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PROD_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+      - name: Terraform Init
+        run: |
+          terraform init -backend-config="region=${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+
+      - name: Create terraform.tfvars
+        run: |
+          cat > terraform.tfvars << EOF
+          project_name = "${{ vars.PROJECT_NAME || 'github-analyzer' }}"
+          environment = "production"
+          aws_region = "${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+          github_token = "${{ secrets.GITHUB_TOKEN_FOR_API }}"
+          github_organization = "${{ vars.GITHUB_ORGANIZATION }}"
+          enable_cognito_auth = true
+          email_domain_restriction = "${{ secrets.PROD_EMAIL_DOMAIN_RESTRICTION }}"
+          cognito_callback_urls = ${{ vars.PROD_COGNITO_CALLBACK_URLS }}
+          cognito_logout_urls = ${{ vars.PROD_COGNITO_LOGOUT_URLS }}
+          allowed_origins = ${{ vars.PROD_ALLOWED_ORIGINS }}
+          enable_dynamodb_backup = true
+          log_retention_days = 30
+          enable_monitoring = true
+          enable_waf = true
+          EOF
+
+      - name: Terraform Apply
+        run: |
+          terraform apply -auto-approve
+
+      - name: Get Terraform Outputs
+        id: terraform-outputs
+        run: |
+          echo "api_url=$(terraform output -raw api_gateway_url)" >> $GITHUB_OUTPUT
+          echo "lambda_name=$(terraform output -raw lambda_function_name)" >> $GITHUB_OUTPUT
+          echo "cognito_domain=$(terraform output -raw cognito_domain)" >> $GITHUB_OUTPUT
+
+      - name: Health Check
+        run: |
+          API_URL="${{ steps.terraform-outputs.outputs.api_url }}"
+          echo "Performing health check on $API_URL/api/health"
+          
+          # ヘルスチェックを実行（最大5回リトライ）
+          for i in {1..5}; do
+            if curl -f -s "$API_URL/api/health"; then
+              echo "✅ Health check passed"
+              break
+            else
+              echo "❌ Health check failed (attempt $i/5)"
+              if [ $i -eq 5 ]; then
+                echo "Health check failed after 5 attempts"
+                exit 1
+              fi
+              sleep 10
+            fi
+          done
+
+      - name: Deploy Success Notification
+        run: |
+          echo "🎉 Production deployment successful!"
+          echo "API URL: ${{ steps.terraform-outputs.outputs.api_url }}"
+          echo "Lambda Function: ${{ steps.terraform-outputs.outputs.lambda_name }}"
+          echo "Cognito Domain: ${{ steps.terraform-outputs.outputs.cognito_domain }}"
+
+  # Cleanup old artifacts
+  cleanup:
+    runs-on: ubuntu-latest
+    needs: [deploy-dev, deploy-prod]
+    if: always()
+    steps:
+      - name: Delete old artifacts
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            // 7日以上古いartifactを削除
+            const cutoffDate = new Date();
+            cutoffDate.setDate(cutoffDate.getDate() - 7);
+            
+            const artifacts = await github.rest.actions.listArtifactsForRepo({
+              owner,
+              repo,
+              per_page: 100
+            });
+            
+            for (const artifact of artifacts.data.artifacts) {
+              const createdAt = new Date(artifact.created_at);
+              if (createdAt < cutoffDate) {
+                console.log(`Deleting old artifact: ${artifact.name} (${artifact.created_at})`);
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id
+                });
+              }
+            }

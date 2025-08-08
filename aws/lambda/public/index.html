@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GitHub PR Analysis</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="spinkit.css" />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/spinkit/2.0.1/spinkit.min.css"
+    />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1691.0.min.js"></script>
+    <script src="https://unpkg.com/@aws-amplify/auth@latest/dist/aws-amplify-auth.min.js"></script>
+  </head>
+  <body>
+    <div id="loading" class="loading-container" style="display: none">
+      <div class="sk-circle">
+        <div class="sk-circle1 sk-child"></div>
+        <div class="sk-circle2 sk-child"></div>
+        <div class="sk-circle3 sk-child"></div>
+        <div class="sk-circle4 sk-child"></div>
+        <div class="sk-circle5 sk-child"></div>
+        <div class="sk-circle6 sk-child"></div>
+        <div class="sk-circle7 sk-child"></div>
+        <div class="sk-circle8 sk-child"></div>
+        <div class="sk-circle9 sk-child"></div>
+        <div class="sk-circle10 sk-child"></div>
+        <div class="sk-circle11 sk-child"></div>
+        <div class="sk-circle12 sk-child"></div>
+      </div>
+    </div>
+    <!-- 認証エリア -->
+    <div id="auth-container" class="auth-container" style="display: none;">
+      <div class="auth-content">
+        <h2>Login Required</h2>
+        <button id="login-button" class="auth-button">Login with AWS Cognito</button>
+      </div>
+    </div>
+
+    <!-- メインコンテンツエリア -->
+    <div id="main-container" class="container" style="display: none;">
+      <div class="user-info">
+        <span id="user-email"></span>
+        <button id="logout-button" class="logout-button">Logout</button>
+      </div>
+      <h1>GitHub PR Analysis</h1>
+      <div class="input-container">
+        <div class="team-selection-container">
+          <span class="team-selection-label">Teams:</span>
+          <div id="teamDropdown"></div>
+        </div>
+        <div class="users-input-container">
+          <span class="users-input-label">Users:</span>
+          <div id="usersAutocomplete"></div>
+        </div>
+        <button id="updateTeamsButton">Team Update</button>
+        <a>from</a>
+        <input type="date" id="fromDateInput" />
+        <a>to</a>
+        <input type="date" id="toDateInput" />
+        <button id="runButton">Update</button>
+      </div>
+      <div class="template-inputs">
+        <button id="weekly-btn">Weekly</button>
+        <button id="monthly-btn">Monthly</button>
+      </div>
+      <div id="result"></div>
+      <div class="chart-container">
+        <canvas id="reviewChart"></canvas>
+      </div>
+
+      <!-- モーダル用の要素 -->
+      <div id="prModal" class="modal">
+        <div class="modal-content">
+          <span class="close">&times;</span>
+          <div id="prModalContent"></div>
+        </div>
+      </div>
+
+      <!-- PR情報表示用のテンプレート -->
+      <template id="pr-table-template">
+        <table class="pr-table">
+          <thead>
+            <tr>
+              <th>Open</th>
+              <th>Close</th>
+              <th>Lifetime</th>
+              <th>FirstReview</th>
+              <th>Title</th>
+              <th>Status</th>
+              <th>Coments</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- ここにPRデータを挿入 -->
+          </tbody>
+        </table>
+      </template>
+
+      <!-- レビュー済みPR表示トグル用のテンプレート -->
+      <template id="completed-toggle-template">
+        <div class="completed-toggle">
+          <label>
+            <input type="checkbox" id="showCompletedToggle">
+            レビュー済みPRも表示
+          </label>
+        </div>
+      </template>
+    </div>
+
+    <!-- 認証関連のJavaScript -->
+    <script src="js/auth/CognitoAuth.js"></script>
+    
+    <!-- JavaScriptファイルを責務別に読み込み -->
+    <script src="js/utils/DateUtils.js"></script>
+    <script src="js/utils/NotificationManager.js"></script>
+    <script src="js/services/GitHubApiService.js"></script>
+    <script src="js/services/DataProcessor.js"></script>
+    <script src="js/components/ChartManager.js"></script>
+    <script src="js/components/ModalManager.js"></script>
+    <script src="js/components/TableBuilder.js"></script>
+    <script src="js/components/MultiSelectDropdown.js"></script>
+    <script src="js/components/AutocompleteInput.js"></script>
+    <script src="js/components/TeamManager.js"></script>
+    <script src="js/components/UserManager.js"></script>
+    <script src="js/controllers/GitHubAnalyzerController.js"></script>
+  </body>
+</html>

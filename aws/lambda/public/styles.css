@@ -1,0 +1,674 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  background-color: #f0f0f0;
+}
+
+/* 認証関連のスタイル */
+.auth-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.auth-content {
+  background: white;
+  padding: 2rem;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  max-width: 400px;
+  width: 90%;
+}
+
+.auth-content h2 {
+  margin-bottom: 1.5rem;
+  color: #333;
+}
+
+.auth-button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: background-color 0.3s;
+}
+
+.auth-button:hover {
+  background-color: #0056b3;
+}
+
+.user-info {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+}
+
+.logout-button {
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.logout-button:hover {
+  background-color: #c82333;
+}
+
+.container {
+  max-width: 95%;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  color: #333;
+}
+
+.chart-container {
+  width: 100%;
+  height: 100%;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  margin-bottom: 20px;
+  padding: 10px;
+}
+
+.input-container {
+  margin: 0 10px;
+  /* 'from' と 'to' の両側に余白を追加 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.input-container button {
+  background-color: #4caf50;
+  border: 2px solid transparent;
+  color: white;
+  padding: 5px 5px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: pointer;
+  border-radius: 5px;
+  margin-left: 15px;
+  /* 左側の余白を追加 */
+}
+
+#runButton:hover {
+  background-color: #cff160;
+  border: 2px solid #4caf50;
+  color: #4caf50;
+}
+
+.template-inputs {
+  margin: 0 10px;
+  /* 'from' と 'to' の両側に余白を追加 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 5px;
+}
+
+.template-inputs button {
+  background-color: #a9f53d8e;
+  border: 2px solid transparent;
+  color: rgb(1, 77, 1);
+  padding: 10px 10px;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  font-size: 16px;
+  margin: 4px 2px;
+  cursor: pointer;
+  border-radius: 10px;
+  margin-left: 15px;
+  /* 左側の余白を追加 */
+}
+
+.template-inputs button:hover {
+  background-color: #cff160;
+  border: 2px solid #4caf50;
+  color: #4caf50;
+}
+
+
+#teamSelect,
+#fromDateInput,
+#toDateInput {
+  margin: 0 10px;
+  margin-right: 20px;
+  padding: 5px;
+  font-size: 12px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+}
+
+#teamSelect {
+  min-width: 120px;
+}
+
+.loading-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.8);
+  /* 半透明の背景 */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+}
+
+#result {
+  text-align: center;
+  visibility: hidden;
+  /* 初期状態で非表示 */
+  font-size: 1.5em;
+  margin-bottom: 5px;
+  color: indianred;
+}
+
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0, 0, 0, 0.4);
+}
+
+.modal-content {
+  background-color: #fefefe;
+  margin: 15% auto;
+  padding: 20px;
+  border: 1px solid #888;
+  width: 80%;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+  color: black;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+/* PR表のスタイル */
+.pr-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.pr-table th,
+.pr-table td {
+  border: 1px solid #ddd;
+  padding: 8px;
+  text-align: left;
+}
+
+.pr-table-author th {
+  background-color: #9ad1f5bc;
+}
+
+.pr-table-requested th {
+  background-color: #ffb1c1bc
+}
+
+.pr-table .closed {
+  color: #999999;
+}
+
+/* 各列の幅を指定 */
+/* open */
+.pr-table th:nth-child(1),
+.pr-table td:nth-child(1) {
+  width: 8%;
+}
+
+/* close */
+.pr-table th:nth-child(2),
+.pr-table td:nth-child(2) {
+  width: 8%;
+}
+
+/* Lifetime */
+.pr-table th:nth-child(3),
+.pr-table td:nth-child(3) {
+  width: 4%;
+}
+
+/* FirstReview */
+.pr-table th:nth-child(4),
+.pr-table td:nth-child(4) {
+  width: 4%;
+}
+
+/* Tittle */
+.pr-table th:nth-child(5),
+.pr-table td:nth-child(5) {
+  width: 30%;
+}
+
+/* Status */
+.pr-table th:nth-child(6),
+.pr-table td:nth-child(6) {
+  width: 4%;
+}
+
+/* Comments */
+.pr-table th:nth-child(7),
+.pr-table td:nth-child(7) {
+  width: 4%;
+}
+
+/* Link */
+.pr-table th:nth-child(8),
+.pr-table td:nth-child(8) {
+  width: 4%;
+}
+
+.pr-table .closed {
+  color: #999999;
+}
+
+.pr-table .completed {
+  color: #999999;
+}
+
+.completed-toggle {
+  margin: 0;
+}
+
+.completed-toggle label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  font-size: 14px;
+  color: #666;
+  margin: 0;
+}
+
+.completed-toggle input[type="checkbox"] {
+  margin-right: 5px;
+}
+
+/* Multi-select dropdown styles */
+.multi-select-dropdown {
+  position: relative;
+  min-width: 250px;
+  max-width: 400px;
+  font-size: 14px;
+}
+
+.multi-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.multi-select-header:hover {
+  border-color: #4caf50;
+}
+
+.multi-select-dropdown.open .multi-select-header {
+  border-color: #4caf50;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.multi-select-selected-display {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-placeholder {
+  color: #999;
+}
+
+.multi-select-selected-count {
+  color: #333;
+  font-weight: 500;
+}
+
+.multi-select-arrow {
+  margin-left: 10px;
+  font-size: 10px;
+  color: #666;
+  transition: transform 0.3s;
+}
+
+.multi-select-dropdown.open .multi-select-arrow {
+  transform: rotate(180deg);
+}
+
+.multi-select-dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #4caf50;
+  border-top: none;
+  border-bottom-left-radius: 5px;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.multi-select-search-container {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-search {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.multi-select-search:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
+.multi-select-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-actions button {
+  flex: 1;
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.multi-select-actions button:hover {
+  background: #e0e0e0;
+}
+
+.multi-select-items-container {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.multi-select-items {
+  padding: 4px 0;
+}
+
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.multi-select-item:hover {
+  background-color: #f5f5f5;
+}
+
+.multi-select-item input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.multi-select-item label {
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.multi-select-group {
+  margin-bottom: 8px;
+}
+
+.multi-select-group-header {
+  padding: 6px 12px;
+  background-color: #f8f8f8;
+  font-weight: bold;
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-no-results {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
+.multi-select-dropdown.disabled {
+  opacity: 0.6;
+}
+
+.multi-select-dropdown.disabled .multi-select-header {
+  cursor: not-allowed;
+}
+
+/* Team selection specific styles */
+.team-selection-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px;
+}
+
+.team-selection-label {
+  font-weight: 500;
+  color: #333;
+}
+
+#teamDropdown {
+  flex: 0 1 auto;
+}
+
+/* Autocomplete styles */
+.autocomplete-container {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-input-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: white;
+  cursor: text;
+  transition: border-color 0.3s;
+  min-height: 34px;
+}
+
+.autocomplete-input-wrapper:hover {
+  border-color: #4caf50;
+}
+
+.autocomplete-container.open .autocomplete-input-wrapper,
+.autocomplete-input-wrapper:focus-within {
+  border-color: #4caf50;
+}
+
+.autocomplete-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  min-width: 100px;
+  padding: 2px 0;
+}
+
+.autocomplete-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.autocomplete-tag {
+  display: flex;
+  align-items: center;
+  background-color: #e3f2fd;
+  border: 1px solid #2196f3;
+  border-radius: 16px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #1976d2;
+  max-width: 150px;
+}
+
+.autocomplete-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autocomplete-tag-remove {
+  background: none;
+  border: none;
+  color: #1976d2;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  margin-left: 4px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.autocomplete-tag-remove:hover {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #4caf50;
+  border-top: none;
+  border-radius: 0 0 5px 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-suggestion {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.autocomplete-suggestion:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-suggestion:hover,
+.autocomplete-suggestion.focused {
+  background-color: #f5f5f5;
+}
+
+.autocomplete-suggestion mark {
+  background-color: #ffeb3b;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.autocomplete-no-results {
+  padding: 12px;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+}
+
+.autocomplete-container.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Users input specific styles */
+.users-input-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px;
+}
+
+.users-input-label {
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+}
+
+#usersAutocomplete {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+}

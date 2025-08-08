@@ -32,11 +32,18 @@
     <div class="container">
       <h1>GitHub PR Analysis</h1>
       <div class="input-container">
-        <a>team</a>
-        <select id="teamSelect">
-          <option value="all">All Teams</option>
-          <!-- チーム選択肢はJavaScriptで動的に追加されます -->
-        </select>
+        <a>teams</a>
+        <div class="team-selection">
+          <div id="teamCheckboxes">
+            <div>
+              <input type="checkbox" id="team-all" value="all" checked />
+              <label for="team-all">All Teams</label>
+            </div>
+            <!-- チームのチェックボックスはJavaScriptで動的に追加されます -->
+          </div>
+        </div>
+        <a>users</a>
+        <input type="text" id="usersInput" placeholder="user1,user2,user3" />
         <button id="updateTeamsButton">Team Update</button>
         <a>from</a>
         <input type="date" id="fromDateInput" />

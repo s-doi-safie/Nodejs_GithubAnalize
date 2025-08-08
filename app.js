@@ -56,13 +56,13 @@ app.post("/update-teams", async (req, res) => {
 app.post("/run-python", async (req, res) => {
   try {
     console.log("Fetching data from Github...");
-    const { fromDate, toDate, team } = req.body;
-    let command = `python fetch_pr_data.py "${fromDate}" "${toDate}"`;
+    const { fromDate, toDate, teams, users } = req.body;
 
-    // チームが指定されている場合は、コマンドにチームパラメータを追加
-    if (team && team !== "all") {
-      command += ` "${team}"`;
-    }
+    // チームと個別ユーザーの情報をJSON形式でPythonスクリプトに渡す
+    const filterParams = JSON.stringify({ teams, users });
+    // JSONをダブルクォートで囲み、内部のダブルクォートをエスケープする
+    const escapedParams = filterParams.replace(/"/g, '\\"');
+    let command = `python fetch_pr_data.py "${fromDate}" "${toDate}" "${escapedParams}"`;
 
     const { stdout, stderr } = await execPromise(command);
     // Pythonコードのログメッセージを出力

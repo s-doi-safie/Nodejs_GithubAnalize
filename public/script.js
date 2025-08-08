@@ -52,34 +52,89 @@ function loadTeams() {
   })
     .then((response) => response.json())
     .then((data) => {
-      const teamSelect = document.getElementById("teamSelect");
-      const teams = data.teams;
+      const teamCheckboxes = document.getElementById("teamCheckboxes");
+      // 既存のチェックボックスをクリア（「すべてのチーム」オプションは残す）
+      const allTeamsCheckbox = document.getElementById("team-all");
+      const allTeamsDiv = allTeamsCheckbox.parentElement;
+      teamCheckboxes.innerHTML = "";
+      teamCheckboxes.appendChild(allTeamsDiv);
 
-      // チーム選択肢を追加
+      // 各チームのチェックボックスを追加
+      const teams = data.teams;
       for (const teamName in teams) {
-        const option = document.createElement("option");
-        option.value = teamName;
-        option.textContent = teamName;
-        teamSelect.appendChild(option);
+        const teamDiv = document.createElement("div");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.id = `team-${teamName}`;
+        checkbox.value = teamName;
+        checkbox.classList.add("team-checkbox");
+        const label = document.createElement("label");
+        label.htmlFor = `team-${teamName}`;
+        label.textContent = teamName;
+        teamDiv.appendChild(checkbox);
+        teamDiv.appendChild(label);
+        teamCheckboxes.appendChild(teamDiv);
       }
+
+      // 「すべてのチーム」チェックボックスのイベントリスナー
+      document.getElementById("team-all").addEventListener("change", (e) => {
+        if (e.target.checked) {
+          document.querySelectorAll(".team-checkbox").forEach((cb) => {
+            cb.checked = false;
+          });
+        }
+      });
+
+      // 個別チームのチェックボックスのイベントリスナー
+      document.querySelectorAll(".team-checkbox").forEach((checkbox) => {
+        checkbox.addEventListener("change", (e) => {
+          if (e.target.checked) {
+            document.getElementById("team-all").checked = false;
+          }
+        });
+      });
     })
     .catch((error) => {
       console.error("Error loading teams:", error);
     });
 }
 
+// 選択されたチームとユーザーを取得する関数
+function getSelectedTeamsAndUsers() {
+  // 選択されたチームを取得
+  const selectedTeams = [];
+  const allTeamsSelected = document.getElementById("team-all").checked;
+
+  if (!allTeamsSelected) {
+    document.querySelectorAll(".team-checkbox:checked").forEach((cb) => {
+      selectedTeams.push(cb.value);
+    });
+  }
+
+  // 入力されたユーザーを取得
+  const usersInput = document.getElementById("usersInput").value;
+  const users = usersInput
+    ? usersInput
+        .split(",")
+        .map((u) => u.trim())
+        .filter((u) => u)
+    : [];
+
+  return { teams: selectedTeams, users };
+}
+
 // 手動日付選択のボタンクリック処理
 document.getElementById("runButton").addEventListener("click", () => {
   const fromDate = document.getElementById("fromDateInput").value;
   const toDate = document.getElementById("toDateInput").value;
-  const team = document.getElementById("teamSelect").value;
+  const { teams, users } = getSelectedTeamsAndUsers();
 
   if (!fromDate || !toDate) {
     alert("両方の日付を選択してください");
     return;
   }
 
-  fetchGithubData(fromDate, toDate, team);
+  fetchGithubData(fromDate, toDate, teams, users);
 });
 
 // 週間ボタンクリック処理
@@ -88,9 +143,9 @@ document.getElementById("weekly-btn").addEventListener("click", () => {
   const fromDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
-  const team = document.getElementById("teamSelect").value;
+  const { teams, users } = getSelectedTeamsAndUsers();
 
-  fetchGithubData(fromDate, toDate, team);
+  fetchGithubData(fromDate, toDate, teams, users);
 });
 
 // 月間ボタンクリック処理
@@ -99,23 +154,12 @@ document.getElementById("monthly-btn").addEventListener("click", () => {
   const fromDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
     .toISOString()
     .split("T")[0];
-  const team = document.getElementById("teamSelect").value;
+  const { teams, users } = getSelectedTeamsAndUsers();
 
-  fetchGithubData(fromDate, toDate, team);
+  fetchGithubData(fromDate, toDate, teams, users);
 });
 
-// チーム選択時の処理
-document.getElementById("teamSelect").addEventListener("change", () => {
-  const fromDate = document.getElementById("fromDateInput").value;
-  const toDate = document.getElementById("toDateInput").value;
-  const team = document.getElementById("teamSelect").value;
-
-  if (fromDate && toDate) {
-    fetchGithubData(fromDate, toDate, team);
-  }
-});
-
-function fetchGithubData(fromDate, toDate, team) {
+function fetchGithubData(fromDate, toDate, teams, users) {
   const resultDiv = document.getElementById("result");
   const loading = document.getElementById("loading");
 
@@ -128,7 +172,7 @@ function fetchGithubData(fromDate, toDate, team) {
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ fromDate, toDate, team }),
+    body: JSON.stringify({ fromDate, toDate, teams, users }),
   })
     .then((response) => response.json())
     .then((data) => {
@@ -425,7 +469,12 @@ function getChartTitle(data, fromDate, toDate) {
 
   // チーム名が含まれている場合は、タイトルに追加
   if (data.team) {
-    title += ` in ${data.team} Team`;
+    // カンマで区切られた複数のチーム名の場合
+    if (data.team.includes(",")) {
+      title += ` in ${data.team} Teams`;
+    } else {
+      title += ` in ${data.team} Team`;
+    }
   } else {
     title += " in All Teams";
   }

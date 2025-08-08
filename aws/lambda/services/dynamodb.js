@@ -1,5 +1,7 @@
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, ScanCommand, UpdateCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand, BatchGetCommand, BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
+const { logger } = require('./s3-logger');
+const { getCompressor } = require('../utils/data-compressor');
 
 /**
  * DynamoDB操作サービスクラス
@@ -12,6 +14,10 @@ class DynamoDBService {
         });
         this.docClient = DynamoDBDocumentClient.from(this.client);
         this.tableName = process.env.DYNAMODB_TABLE_NAME || 'github-analyzer-data';
+        this.compressor = getCompressor();
+        
+        // 圧縮対象フィールド
+        this.compressibleFields = ['pr_details', 'data', 'teams', 'members'];
     }
 
     /**
@@ -33,29 +39,44 @@ class DynamoDBService {
                     teams: prData.teams || [],
                     users: prData.users || [],
                     updated_at: timestamp,
-                    ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60) // 30日後にTTL
+                    ttl: Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60) // 180日後にTTL
                 }
             }));
 
-            // 個別のPR詳細も保存
-            for (const pr of prData.pr_details) {
-                await this.docClient.send(new PutCommand({
-                    TableName: this.tableName,
-                    Item: {
-                        PK: `PR#${pr.repository}#${pr.number}`,
-                        SK: 'METADATA',
-                        ...pr,
-                        updated_at: timestamp,
-                        ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)
-                    }
-                }));
+            // 個別のPR詳細をバッチで保存
+            if (prData.pr_details && prData.pr_details.length > 0) {
+                const batches = [];
+                for (let i = 0; i < prData.pr_details.length; i += 25) {
+                    const batch = prData.pr_details.slice(i, i + 25);
+                    const putRequests = batch.map(pr => ({
+                        PutRequest: {
+                            Item: {
+                                PK: `PR#${pr.repository}#${pr.number}`,
+                                SK: 'METADATA',
+                                ...pr,
+                                updated_at: timestamp,
+                                ttl: Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60)
+                            }
+                        }
+                    }));
+                    batches.push(putRequests);
+                }
+                
+                // バッチ書き込み実行
+                for (const batch of batches) {
+                    await this.docClient.send(new BatchWriteCommand({
+                        RequestItems: {
+                            [this.tableName]: batch
+                        }
+                    }));
+                }
             }
 
-            console.log('PR data saved successfully');
+            logger.info('PR data saved successfully', { count: prData.pr_details.length });
             return { success: true, timestamp };
 
         } catch (error) {
-            console.error('Error saving PR data:', error);
+            logger.error(error, { context: 'savePRData' });
             throw error;
         }
     }
@@ -92,7 +113,7 @@ class DynamoDBService {
             };
 
         } catch (error) {
-            console.error('Error getting PR data:', error);
+            logger.error(error, { context: 'getPRData' });
             throw error;
         }
     }
@@ -104,16 +125,18 @@ class DynamoDBService {
         try {
             const timestamp = new Date().toISOString();
             
-            // 全体のチームデータを保存
+            // 全体のチームデータを圧縮して保存
+            const compressedTeamItem = await this.compressor.compressLargeFields({
+                PK: 'TEAM_DATA',
+                SK: 'ALL_TEAMS',
+                teams: teamData,
+                updated_at: timestamp,
+                ttl: Math.floor(Date.now() / 1000) + (180 * 24 * 60 * 60)
+            }, ['teams']);
+            
             await this.docClient.send(new PutCommand({
                 TableName: this.tableName,
-                Item: {
-                    PK: 'TEAM_DATA',
-                    SK: 'ALL_TEAMS',
-                    teams: teamData,
-                    updated_at: timestamp,
-                    ttl: Math.floor(Date.now() / 1000) + (30 * 24 * 60 * 60)
-                }
+                Item: compressedTeamItem
             }));
 
             // 個別チーム情報も保存
@@ -148,11 +171,11 @@ class DynamoDBService {
                 }
             }
 
-            console.log('Team data saved successfully');
+            logger.info('Team data saved successfully', { teams: Object.keys(teamData).length });
             return { success: true, timestamp };
 
         } catch (error) {
-            console.error('Error saving team data:', error);
+            logger.error(error, { context: 'saveTeamData' });
             throw error;
         }
     }
@@ -173,7 +196,7 @@ class DynamoDBService {
             return result.Item?.teams || {};
 
         } catch (error) {
-            console.error('Error getting team data:', error);
+            logger.error(error, { context: 'getTeamData' });
             throw error;
         }
     }
@@ -194,7 +217,7 @@ class DynamoDBService {
             return result.Item || null;
 
         } catch (error) {
-            console.error(`Error getting team info for ${teamName}:`, error);
+            logger.error(error, { context: 'getTeamInfo', teamName });
             throw error;
         }
     }
@@ -215,29 +238,35 @@ class DynamoDBService {
             return result.Item || null;
 
         } catch (error) {
-            console.error(`Error getting user info for ${username}:`, error);
+            logger.error(error, { context: 'getUserInfo', username });
             throw error;
         }
     }
 
     /**
-     * 全ユーザー一覧を取得
+     * 全ユーザー一覧を取得（Query使用）
      */
     async getAllUsers() {
         try {
-            const result = await this.docClient.send(new ScanCommand({
-                TableName: this.tableName,
-                FilterExpression: 'begins_with(PK, :pk_prefix) AND SK = :sk',
-                ExpressionAttributeValues: {
-                    ':pk_prefix': 'USER#',
-                    ':sk': 'PROFILE'
+            // チームデータから全ユーザーを取得する方法に変更
+            const teamData = await this.getTeamData();
+            const users = [];
+            
+            for (const teamInfo of Object.values(teamData)) {
+                if (teamInfo.members) {
+                    users.push(...teamInfo.members);
                 }
-            }));
-
-            return result.Items || [];
+            }
+            
+            // 重複を除去
+            const uniqueUsers = Array.from(
+                new Map(users.map(user => [user.login, user])).values()
+            );
+            
+            return uniqueUsers;
 
         } catch (error) {
-            console.error('Error getting all users:', error);
+            logger.error(error, { context: 'getAllUsers' });
             throw error;
         }
     }
@@ -258,7 +287,7 @@ class DynamoDBService {
             return result.Item || null;
 
         } catch (error) {
-            console.error(`Error getting PR details for ${repository}#${prNumber}:`, error);
+            logger.error(error, { context: 'getPRDetails', repository, prNumber });
             throw error;
         }
     }
@@ -281,11 +310,11 @@ class DynamoDBService {
                 }
             }));
 
-            console.log(`Cache saved for ${cacheType}`);
+            logger.debug(`Cache saved for ${cacheType}`, { ttl: ttlSeconds });
             return { success: true, timestamp };
 
         } catch (error) {
-            console.error(`Error saving cache for ${cacheType}:`, error);
+            logger.error(error, { context: 'saveCache', cacheType });
             throw error;
         }
     }
@@ -315,7 +344,7 @@ class DynamoDBService {
             return null;
 
         } catch (error) {
-            console.error(`Error getting cache for ${cacheType}:`, error);
+            logger.warn(`Cache miss for ${cacheType}`, { error: error.message });
             return null; // キャッシュエラーは例外を投げない
         }
     }
@@ -328,16 +357,88 @@ class DynamoDBService {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - 30); // 30日前
             
-            console.log('Starting cleanup of old data...');
-            
-            // TTLが設定されているため、自動削除される
-            // 必要に応じて手動クリーンアップロジックを追加
-            
-            console.log('Cleanup completed');
+            logger.info('Cleanup skipped - using DynamoDB TTL for automatic deletion');
             return { success: true };
 
         } catch (error) {
-            console.error('Error during cleanup:', error);
+            logger.error(error, { context: 'cleanupOldData' });
+            throw error;
+        }
+    }
+
+    /**
+     * 複数のPR詳細をバッチで取得
+     */
+    async batchGetPRDetails(prList) {
+        try {
+            if (!prList || prList.length === 0) {
+                return [];
+            }
+
+            const results = [];
+            
+            // 100件ずつバッチ取得
+            for (let i = 0; i < prList.length; i += 100) {
+                const batch = prList.slice(i, i + 100);
+                const keys = batch.map(pr => ({
+                    PK: `PR#${pr.repository}#${pr.number}`,
+                    SK: 'METADATA'
+                }));
+
+                const response = await this.docClient.send(new BatchGetCommand({
+                    RequestItems: {
+                        [this.tableName]: {
+                            Keys: keys
+                        }
+                    }
+                }));
+
+                if (response.Responses && response.Responses[this.tableName]) {
+                    results.push(...response.Responses[this.tableName]);
+                }
+            }
+
+            return results;
+
+        } catch (error) {
+            logger.error(error, { context: 'batchGetPRDetails' });
+            throw error;
+        }
+    }
+
+    /**
+     * 複数のチーム情報をバッチで取得
+     */
+    async batchGetTeams(teamNames) {
+        try {
+            if (!teamNames || teamNames.length === 0) {
+                return {};
+            }
+
+            const keys = teamNames.map(teamName => ({
+                PK: `TEAM#${teamName}`,
+                SK: 'INFO'
+            }));
+
+            const response = await this.docClient.send(new BatchGetCommand({
+                RequestItems: {
+                    [this.tableName]: {
+                        Keys: keys
+                    }
+                }
+            }));
+
+            const teams = {};
+            if (response.Responses && response.Responses[this.tableName]) {
+                for (const item of response.Responses[this.tableName]) {
+                    teams[item.team_name] = item;
+                }
+            }
+
+            return teams;
+
+        } catch (error) {
+            logger.error(error, { context: 'batchGetTeams' });
             throw error;
         }
     }
@@ -373,7 +474,7 @@ class DynamoDBService {
             };
 
         } catch (error) {
-            console.error('DynamoDB health check failed:', error);
+            logger.error(error, { context: 'healthCheck' });
             return { 
                 success: false, 
                 error: error.message,

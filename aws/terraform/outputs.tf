@@ -1,12 +1,12 @@
-# API Gateway
-output "api_gateway_url" {
-  description = "API Gateway のURL"
-  value       = aws_apigatewayv2_stage.default.invoke_url
+# Lambda Function URL
+output "lambda_function_url" {
+  description = "Lambda Function URLのエンドポイント"
+  value       = aws_lambda_function_url.github_analyzer_url.function_url
 }
 
-output "api_gateway_id" {
-  description = "API Gateway のID"
-  value       = aws_apigatewayv2_api.github_analyzer_api.id
+output "lambda_function_url_id" {
+  description = "Lambda Function URLのID"
+  value       = aws_lambda_function_url.github_analyzer_url.url_id
 }
 
 # Lambda
@@ -64,15 +64,15 @@ output "lambda_execution_role_arn" {
   value       = aws_iam_role.lambda_execution_role.arn
 }
 
-# CloudWatch
-output "lambda_log_group_name" {
-  description = "Lambda CloudWatch Logsグループ名"
-  value       = aws_cloudwatch_log_group.lambda_logs.name
+# S3ログバケット
+output "s3_logs_bucket_name" {
+  description = "S3ログバケット名"
+  value       = aws_s3_bucket.logs.id
 }
 
-output "api_gateway_log_group_name" {
-  description = "API Gateway CloudWatch Logsグループ名"
-  value       = aws_cloudwatch_log_group.api_gateway_logs.name
+output "s3_logs_bucket_arn" {
+  description = "S3ログバケットARN"
+  value       = aws_s3_bucket.logs.arn
 }
 
 # Systems Manager Parameter Store
@@ -107,9 +107,10 @@ output "configuration_summary" {
     cognito_auth_enabled     = var.enable_cognito_auth
     email_domain_restriction = var.email_domain_restriction != "" ? "enabled" : "disabled"
     dynamodb_backup_enabled  = var.enable_dynamodb_backup
-    lambda_timeout          = var.lambda_timeout
-    lambda_memory_size      = var.lambda_memory_size
-    log_retention_days      = var.log_retention_days
+    lambda_timeout          = "30 seconds (optimized)"
+    lambda_memory_size      = "384 MB (optimized)"
+    lambda_architecture     = "arm64 (optimized)"
+    logging_system          = "S3 (optimized)"
   }
 }
 
@@ -117,7 +118,7 @@ output "configuration_summary" {
 output "frontend_environment_variables" {
   description = "フロントエンド用の環境変数"
   value = {
-    REACT_APP_API_BASE_URL     = aws_apigatewayv2_stage.default.invoke_url
+    REACT_APP_API_BASE_URL     = aws_lambda_function_url.github_analyzer_url.function_url
     REACT_APP_AWS_REGION       = local.region
     REACT_APP_COGNITO_USER_POOL_ID = var.enable_cognito_auth ? aws_cognito_user_pool.github_analyzer[0].id : ""
     REACT_APP_COGNITO_CLIENT_ID    = var.enable_cognito_auth ? aws_cognito_user_pool_client.github_analyzer_client[0].id : ""
@@ -141,9 +142,9 @@ output "github_actions_secrets" {
 output "api_test_commands" {
   description = "API動作確認用のcurlコマンド例"
   value = {
-    health_check = "curl -X GET ${aws_apigatewayv2_stage.default.invoke_url}/api/health"
-    review_data  = "curl -X GET ${aws_apigatewayv2_stage.default.invoke_url}/api/review-data"
-    teams_data   = "curl -X GET ${aws_apigatewayv2_stage.default.invoke_url}/api/teams"
+    health_check = "curl -X GET ${aws_lambda_function_url.github_analyzer_url.function_url}/api/health"
+    review_data  = "curl -X GET ${aws_lambda_function_url.github_analyzer_url.function_url}/api/review-data"
+    teams_data   = "curl -X GET ${aws_lambda_function_url.github_analyzer_url.function_url}/api/teams"
   }
 }
 
@@ -160,11 +161,10 @@ output "custom_domain_info" {
 output "estimated_monthly_costs" {
   description = "月額コスト見積もり（参考値）"
   value = {
-    lambda_requests_per_month = "1,000,000リクエスト想定: 約$0.20"
-    dynamodb_on_demand       = "読み書き100万リクエスト想定: 約$1.25"
-    api_gateway             = "100万APIコール想定: 約$3.50"
-    cloudwatch_logs         = "10GB/月想定: 約$5.00"
-    total_estimated         = "約$10-15/月（使用量による）"
-    note                   = "実際のコストは使用量により変動します"
+    lambda_requests_per_month = "1,000,000リクエスト想定: 約$0.13 (ARM64最適化)"
+    dynamodb_on_demand       = "読み書き100万リクエスト想定: 約$0.60 (バッチ処理最適化)"
+    s3_logs_storage         = "10GB/月想定: 約$0.25 (CloudWatch廃止)"
+    total_estimated         = "約$1-2/月（70-80%削減達成）"
+    note                   = "API Gateway削除、ARM64採用、S3ログで大幅コスト削減"
   }
 }

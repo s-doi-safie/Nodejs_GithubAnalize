@@ -17,9 +17,16 @@ variable "environment" {
 }
 
 variable "aws_region" {
-  description = "AWS リージョン"
+  description = "AWS リージョン（Single Region構成でコスト最適化）"
   type        = string
   default     = "ap-northeast-1"
+  
+  validation {
+    condition = contains([
+      "us-east-1", "us-west-2", "eu-west-1", "ap-northeast-1", "ap-southeast-1"
+    ], var.aws_region)
+    error_message = "Supported regions for cost optimization: us-east-1, us-west-2, eu-west-1, ap-northeast-1, ap-southeast-1."
+  }
 }
 
 # GitHub設定
@@ -34,49 +41,27 @@ variable "github_organization" {
   type        = string
 }
 
-# Lambda設定
-variable "lambda_timeout" {
-  description = "Lambda関数のタイムアウト秒数"
-  type        = number
-  default     = 60
+# Lambda設定（最適化済み固定値）
+# タイムアウト: 30秒固定
+# メモリサイズ: 384MB固定
+# アーキテクチャ: ARM64固定
 
-  validation {
-    condition     = var.lambda_timeout >= 1 && var.lambda_timeout <= 900
-    error_message = "Lambda timeout must be between 1 and 900 seconds."
-  }
-}
-
-variable "lambda_memory_size" {
-  description = "Lambda関数のメモリサイズ (MB)"
-  type        = number
-  default     = 512
-
-  validation {
-    condition     = var.lambda_memory_size >= 128 && var.lambda_memory_size <= 10240
-    error_message = "Lambda memory size must be between 128 and 10240 MB."
-  }
-}
-
-# DynamoDB設定
+# DynamoDB設定（Single Region最適化）
 variable "enable_dynamodb_backup" {
-  description = "DynamoDB Point-in-Time Recovery を有効にするか"
+  description = "DynamoDB Point-in-Time Recovery を有効にするか（コスト削減のためデフォルト無効）"
   type        = bool
   default     = false
 }
 
-# CloudWatch Logs設定
-variable "log_retention_days" {
-  description = "CloudWatch Logs の保持日数"
-  type        = number
-  default     = 14
+# Single Region設定
+# - Global Tables は使用しない（複数リージョン不要）
+# - DynamoDB Streams は無効化
+# - Point-in-Time Recovery はデフォルト無効
+# - TTL による自動データ削除でストレージコスト削減
 
-  validation {
-    condition = contains([
-      1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1827, 3653
-    ], var.log_retention_days)
-    error_message = "Log retention days must be a valid CloudWatch Logs retention value."
-  }
-}
+# ログ設定
+# S3にログを出力（CloudWatch Logs は使用しない）
+# S3ライフサイクル: 30日後に自動削除
 
 # Cognito認証設定
 variable "enable_cognito_auth" {

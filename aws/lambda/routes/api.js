@@ -1,5 +1,7 @@
 const GitHubApiService = require('../services/github-api');
 const DataProcessor = require('../services/data-processor');
+const { logger } = require('../services/s3-logger');
+const { getCache } = require('../services/cache-manager');
 
 /**
  * API ルーター
@@ -18,7 +20,7 @@ class ApiRouter {
         const { httpMethod, path, body, queryStringParameters } = request;
 
         try {
-            console.log(`API Request: ${httpMethod} ${path}`);
+            logger.info(`API Request: ${httpMethod} ${path}`);
 
             // ルーティング
             switch (path) {
@@ -48,6 +50,12 @@ class ApiRouter {
 
                 case '/api/stats':
                     return await this.getStatistics();
+                
+                case '/api/batch':
+                    if (httpMethod === 'POST') {
+                        return await this.batchOperation(body);
+                    }
+                    break;
 
                 default:
                     return {
@@ -64,7 +72,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('API Error:', error);
+            logger.error(error, { context: 'API Router' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -100,7 +108,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('Error in getReviewData:', error);
+            logger.error(error, { context: 'getReviewData' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -123,7 +131,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('Error in getTeams:', error);
+            logger.error(error, { context: 'getTeams' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -147,9 +155,7 @@ class ApiRouter {
                 };
             }
 
-            console.log(`Fetching PR data from ${fromDate} to ${toDate}`);
-            console.log(`Teams: ${JSON.stringify(teams)}`);
-            console.log(`Users: ${JSON.stringify(users)}`);
+            logger.info('Fetching PR data', { fromDate, toDate, teams, users });
 
             const result = await this.githubService.fetchAndUpdatePRData(
                 fromDate, 
@@ -176,7 +182,7 @@ class ApiRouter {
             }
 
         } catch (error) {
-            console.error('Error in runPythonScript:', error);
+            logger.error(error, { context: 'runPythonScript' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -190,7 +196,7 @@ class ApiRouter {
      */
     async updateTeams() {
         try {
-            console.log('Updating team information...');
+            logger.info('Updating team information');
 
             const result = await this.githubService.updateTeamInfo();
 
@@ -212,7 +218,7 @@ class ApiRouter {
             }
 
         } catch (error) {
-            console.error('Error in updateTeams:', error);
+            logger.error(error, { context: 'updateTeams' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -235,7 +241,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('Error in healthCheck:', error);
+            logger.error(error, { context: 'healthCheck' });
             return {
                 statusCode: 503,
                 headers: { 'Content-Type': 'application/json' },
@@ -262,7 +268,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('Error in getDebugInfo:', error);
+            logger.error(error, { context: 'getDebugInfo' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -307,7 +313,7 @@ class ApiRouter {
             };
 
         } catch (error) {
-            console.error('Error in getStatistics:', error);
+            logger.error(error, { context: 'getStatistics' });
             return {
                 statusCode: 500,
                 headers: { 'Content-Type': 'application/json' },
@@ -335,8 +341,122 @@ class ApiRouter {
             return { isValid: true };
 
         } catch (error) {
-            console.error('Auth validation error:', error);
+            logger.error(error, { context: 'Auth validation' });
             return { isValid: false, error: 'Invalid token' };
+        }
+    }
+    
+    /**
+     * バッチ操作エンドポイント
+     */
+    async batchOperation(body) {
+        try {
+            const { operations } = body || {};
+            
+            if (!operations || !Array.isArray(operations)) {
+                return {
+                    statusCode: 400,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: { error: 'operations array is required' }
+                };
+            }
+            
+            const results = {};
+            const errors = {};
+            const cache = getCache();
+            
+            // 並列処理で各操作を実行
+            await Promise.all(operations.map(async (op) => {
+                try {
+                    const { type, params } = op;
+                    
+                    // キャッシュチェック
+                    const cacheKey = cache.generateKey(`batch:${type}`, params || {});
+                    const cached = cache.get(cacheKey);
+                    if (cached) {
+                        results[type] = cached;
+                        return;
+                    }
+                    
+                    // タイプ別の処理
+                    switch (type) {
+                        case 'review-data':
+                            const reviewData = await this.getReviewData();
+                            results[type] = reviewData.body;
+                            cache.set(cacheKey, reviewData.body, 300000);
+                            break;
+                            
+                        case 'teams':
+                            const teamsData = await this.getTeams();
+                            results[type] = teamsData.body;
+                            cache.set(cacheKey, teamsData.body, 600000);
+                            break;
+                            
+                        case 'statistics':
+                            const statsData = await this.getStatistics();
+                            results[type] = statsData.body;
+                            cache.set(cacheKey, statsData.body, 300000);
+                            break;
+                            
+                        case 'pr-details':
+                            if (params && params.repository && params.prNumber) {
+                                const prDetails = await this.githubService.getPRDetails(
+                                    params.repository,
+                                    params.prNumber
+                                );
+                                results[type] = prDetails;
+                                cache.set(cacheKey, prDetails, 600000);
+                            } else {
+                                errors[type] = 'Missing required params: repository, prNumber';
+                            }
+                            break;
+                            
+                        case 'team-info':
+                            if (params && params.teamName) {
+                                const teamInfo = await this.githubService.getTeamInfo(params.teamName);
+                                results[type] = teamInfo;
+                                cache.set(cacheKey, teamInfo, 600000);
+                            } else {
+                                errors[type] = 'Missing required param: teamName';
+                            }
+                            break;
+                            
+                        case 'user-info':
+                            if (params && params.username) {
+                                const userInfo = await this.githubService.getUserInfo(params.username);
+                                results[type] = userInfo;
+                                cache.set(cacheKey, userInfo, 600000);
+                            } else {
+                                errors[type] = 'Missing required param: username';
+                            }
+                            break;
+                            
+                        default:
+                            errors[type] = `Unknown operation type: ${type}`;
+                    }
+                } catch (error) {
+                    errors[op.type] = error.message;
+                    logger.error(error, { context: 'batchOperation', type: op.type });
+                }
+            }));
+            
+            return {
+                statusCode: 200,
+                headers: { 'Content-Type': 'application/json' },
+                body: {
+                    results,
+                    errors: Object.keys(errors).length > 0 ? errors : undefined,
+                    cached: cache.getStats()
+                }
+            };
+            
+        } catch (error) {
+            logger.error(error, { context: 'batchOperation' });
+            return {
+                statusCode: 500,
+                headers: { 'Content-Type': 'application/json' },
+                body: { error: 'Failed to process batch operations' }
+            };
         }
     }
 }

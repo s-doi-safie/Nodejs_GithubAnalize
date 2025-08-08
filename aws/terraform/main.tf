@@ -24,6 +24,9 @@ provider "aws" {
       Environment = var.environment
       Project     = "github-analyzer"
       ManagedBy   = "terraform"
+      Region      = var.aws_region
+      SingleRegion = "true"
+      CostOptimized = "true"
     }
   }
 }
@@ -42,18 +45,25 @@ locals {
     Environment = var.environment
     Project     = "github-analyzer"
     ManagedBy   = "terraform"
+    Region      = var.aws_region
+    SingleRegion = "true"
+    Architecture = "serverless-optimized"
+    CostOptimized = "true"
   }
 
   # 命名規則
   name_prefix = "${var.project_name}-${var.environment}"
 }
 
-# DynamoDB テーブル
+# DynamoDB テーブル（Single Region最適化）
 resource "aws_dynamodb_table" "github_analyzer_data" {
   name         = "${local.name_prefix}-data"
-  billing_mode = "ON_DEMAND"
+  billing_mode = "ON_DEMAND"  # 予測不能なワークロードに最適
   hash_key     = "PK"
   range_key    = "SK"
+  
+  # Single Region設定を明示的に指定
+  table_class = "STANDARD"  # Global TablesではなくStandardテーブル
 
   attribute {
     name = "PK"
@@ -65,18 +75,25 @@ resource "aws_dynamodb_table" "github_analyzer_data" {
     type = "S"
   }
 
-  # TTL設定
+  # TTL設定（180日コスト削減）
   ttl {
     attribute_name = "ttl"
     enabled        = true
   }
 
-  # バックアップ設定
+  # バックアップ設定（デフォルトで無効でコスト削減）
   point_in_time_recovery {
     enabled = var.enable_dynamodb_backup
   }
+  
+  # ストリーム設定を明示的に無効化（コスト削減）
+  stream_enabled = false
 
-  tags = local.common_tags
+  tags = merge(local.common_tags, {
+    "SingleRegion" = "true"
+    "Optimized"    = "true"
+    "DataCompression" = "enabled"
+  })
 }
 
 # Lambda 実行ロール
@@ -110,11 +127,11 @@ resource "aws_iam_role_policy" "lambda_policy" {
       {
         Effect = "Allow"
         Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
+          "s3:PutObject",
+          "s3:PutObjectAcl",
+          "s3:GetObject"
         ]
-        Resource = "arn:aws:logs:${local.region}:${local.account_id}:*"
+        Resource = "${aws_s3_bucket.logs.arn}/*"
       },
       {
         Effect = "Allow"
@@ -145,12 +162,44 @@ resource "aws_iam_role_policy" "lambda_policy" {
   })
 }
 
-# CloudWatch Logs グループ
-resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${local.name_prefix}-handler"
-  retention_in_days = var.log_retention_days
-
+# S3ログバケット
+resource "aws_s3_bucket" "logs" {
+  bucket = "${local.name_prefix}-logs"
+  
   tags = local.common_tags
+}
+
+# S3バケットのバージョニング設定
+resource "aws_s3_bucket_versioning" "logs" {
+  bucket = aws_s3_bucket.logs.id
+  
+  versioning_configuration {
+    status = "Disabled"
+  }
+}
+
+# S3バケットのライフサイクル設定（30日後に削除）
+resource "aws_s3_bucket_lifecycle_configuration" "logs" {
+  bucket = aws_s3_bucket.logs.id
+
+  rule {
+    id     = "delete-old-logs"
+    status = "Enabled"
+
+    expiration {
+      days = 30
+    }
+  }
+}
+
+# S3バケットのパブリックアクセスブロック
+resource "aws_s3_bucket_public_access_block" "logs" {
+  bucket = aws_s3_bucket.logs.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
 # Lambda 関数
@@ -164,9 +213,10 @@ resource "aws_lambda_function" "github_analyzer" {
   
   handler = "index.handler"
   runtime = "nodejs18.x"
-  timeout = var.lambda_timeout
+  architectures = ["arm64"]  # ARMプロセッサでコスト削減
+  timeout = 30  # 30秒に短縮
   
-  memory_size = var.lambda_memory_size
+  memory_size = 384  # 384MBに削減
 
   environment {
     variables = {
@@ -174,107 +224,44 @@ resource "aws_lambda_function" "github_analyzer" {
       AWS_REGION          = local.region
       ENVIRONMENT         = var.environment
       GITHUB_TOKEN_PARAM  = aws_ssm_parameter.github_token.name
+      LOG_BUCKET_NAME     = aws_s3_bucket.logs.id
     }
   }
 
   depends_on = [
     aws_iam_role_policy.lambda_policy,
-    aws_cloudwatch_log_group.lambda_logs
+    aws_s3_bucket.logs
   ]
 
   tags = local.common_tags
 }
 
-# API Gateway
-resource "aws_apigatewayv2_api" "github_analyzer_api" {
-  name          = "${local.name_prefix}-api"
-  protocol_type = "HTTP"
+# Lambda Function URL
+resource "aws_lambda_function_url" "github_analyzer_url" {
+  function_name      = aws_lambda_function.github_analyzer.function_name
+  authorization_type = var.enable_cognito_auth ? "AWS_IAM" : "NONE"
   
-  cors_configuration {
+  cors {
+    allow_credentials = true
     allow_origins     = var.allowed_origins
     allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     allow_headers     = ["content-type", "x-amz-date", "authorization", "x-api-key", "x-amz-security-token"]
-    expose_headers    = ["x-amz-request-id"]
+    expose_headers    = ["x-amz-request-id", "x-cache"]
     max_age          = 300
-    allow_credentials = true
   }
-
-  tags = local.common_tags
 }
 
-# API Gateway Lambda 統合
-resource "aws_apigatewayv2_integration" "lambda_integration" {
-  api_id = aws_apigatewayv2_api.github_analyzer_api.id
 
-  integration_uri    = aws_lambda_function.github_analyzer.invoke_arn
-  integration_type   = "AWS_PROXY"
-  integration_method = "POST"
-
-  payload_format_version = "2.0"
-}
-
-# API Gateway ルート（すべてをLambdaに送信）
-resource "aws_apigatewayv2_route" "default_route" {
-  api_id = aws_apigatewayv2_api.github_analyzer_api.id
-
-  route_key = "ANY /{proxy+}"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = var.enable_cognito_auth ? "JWT" : "NONE"
-  authorizer_id      = var.enable_cognito_auth ? aws_apigatewayv2_authorizer.cognito_authorizer[0].id : null
-}
-
-# ルートパス用のルート
-resource "aws_apigatewayv2_route" "root_route" {
-  api_id = aws_apigatewayv2_api.github_analyzer_api.id
-
-  route_key = "ANY /"
-  target    = "integrations/${aws_apigatewayv2_integration.lambda_integration.id}"
-
-  authorization_type = var.enable_cognito_auth ? "JWT" : "NONE"
-  authorizer_id      = var.enable_cognito_auth ? aws_apigatewayv2_authorizer.cognito_authorizer[0].id : null
-}
-
-# API Gateway デプロイメントステージ
-resource "aws_apigatewayv2_stage" "default" {
-  api_id = aws_apigatewayv2_api.github_analyzer_api.id
-
-  name        = var.environment
-  auto_deploy = true
-
-  access_log_settings {
-    destination_arn = aws_cloudwatch_log_group.api_gateway_logs.arn
-    format = jsonencode({
-      requestId      = "$context.requestId"
-      ip             = "$context.identity.sourceIp"
-      requestTime    = "$context.requestTime"
-      httpMethod     = "$context.httpMethod"
-      routeKey       = "$context.routeKey"
-      status         = "$context.status"
-      protocol       = "$context.protocol"
-      responseLength = "$context.responseLength"
-    })
-  }
-
-  tags = local.common_tags
-}
-
-# API Gateway CloudWatch Logs
-resource "aws_cloudwatch_log_group" "api_gateway_logs" {
-  name              = "/aws/apigateway/${local.name_prefix}"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
-
-# Lambda に API Gateway からの実行許可を付与
-resource "aws_lambda_permission" "api_gateway" {
-  statement_id  = "AllowExecutionFromAPIGateway"
-  action        = "lambda:InvokeFunction"
+# Lambda Function URLのパブリックアクセス許可（認証なしの場合）
+resource "aws_lambda_permission" "function_url" {
+  count = var.enable_cognito_auth ? 0 : 1
+  
+  statement_id  = "AllowPublicAccess"
+  action        = "lambda:InvokeFunctionUrl"
   function_name = aws_lambda_function.github_analyzer.function_name
-  principal     = "apigateway.amazonaws.com"
-
-  source_arn = "${aws_apigatewayv2_api.github_analyzer_api.execution_arn}/*/*"
+  principal     = "*"
+  
+  function_url_auth_type = "NONE"
 }
 
 # Systems Manager Parameter Store - GitHub Token

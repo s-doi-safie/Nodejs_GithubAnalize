@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
-const mime = require('mime-types');
+const { logger } = require('../services/s3-logger');
+const { getBundler } = require('../utils/html-bundler');
 
 /**
  * 静的ファイル配信ルーター
@@ -9,16 +10,20 @@ const mime = require('mime-types');
 class StaticRouter {
     constructor() {
         this.publicDir = path.join(__dirname, '..', 'public');
+        this.bundler = getBundler();
         
         // キャッシュ設定
         this.cacheSettings = {
-            'text/html': 'no-cache',
+            'text/html': 'no-cache', // バンドルファイルはキャッシュしない
             'text/css': 'public, max-age=31536000', // 1年
             'application/javascript': 'public, max-age=31536000', // 1年
             'image/': 'public, max-age=2592000', // 30日
             'application/json': 'no-cache',
             'default': 'public, max-age=3600' // 1時間
         };
+        
+        // バンドルモード設定
+        this.bundleMode = process.env.ENABLE_BUNDLE === 'true' || process.env.NODE_ENV === 'production';
     }
 
     /**
@@ -31,6 +36,11 @@ class StaticRouter {
             // ルートパスの場合はindex.htmlを返す
             let filePath = requestPath === '/' ? '/index.html' : requestPath;
             
+            // バンドルモードでindex.htmlリクエストの場合
+            if (this.bundleMode && (filePath === '/index.html' || requestPath === '/')) {
+                return await this.serveBundledHtml();
+            }
+            
             // セキュリティ: パストラバーサル攻撃を防ぐ
             if (filePath.includes('..') || filePath.includes('//')) {
                 return this.createErrorResponse(400, 'Invalid file path');
@@ -42,6 +52,11 @@ class StaticRouter {
             if (!fileResult.exists) {
                 // ファイルが見つからない場合、SPAの場合はindex.htmlにフォールバック
                 if (this.shouldFallbackToIndex(filePath)) {
+                    // バンドルモードではバンドルされたHTMLを返す
+                    if (this.bundleMode) {
+                        return await this.serveBundledHtml();
+                    }
+                    
                     const indexResult = await this.readFile('/index.html');
                     if (indexResult.exists) {
                         return this.createFileResponse(indexResult.content, 'text/html');
@@ -57,9 +72,63 @@ class StaticRouter {
             return this.createFileResponse(fileResult.content, mimeType, fileResult.isBase64);
 
         } catch (error) {
-            console.error('Static file serving error:', error);
+            logger.error(error, { context: 'Static file serving', path: requestPath });
             return this.createErrorResponse(500, 'Internal server error');
         }
+    }
+
+    /**
+     * バンドルされたHTMLを配信
+     */
+    async serveBundledHtml() {
+        try {
+            logger.info('Serving bundled HTML');
+            
+            const bundledHtml = await this.bundler.createBundle();
+            const bundleStats = await this.bundler.getBundleStats();
+            
+            logger.info('Bundle served successfully', {
+                originalFiles: bundleStats?.original.fileCount || 0,
+                bundledSize: bundleStats?.bundled.sizeFormatted || '0 KB',
+                reduction: bundleStats?.optimization.reductionPercentage || '0%'
+            });
+            
+            return {
+                statusCode: 200,
+                headers: {
+                    'Content-Type': 'text/html',
+                    'Cache-Control': 'no-cache',
+                    'X-Bundle-Mode': 'enabled',
+                    'X-Bundle-Files': bundleStats?.original.fileCount?.toString() || '0',
+                    'X-Bundle-Reduction': bundleStats?.optimization.reductionPercentage || '0%',
+                    'X-Content-Type-Options': 'nosniff',
+                    'X-Frame-Options': 'DENY',
+                    'X-XSS-Protection': '1; mode=block',
+                    'Referrer-Policy': 'strict-origin-when-cross-origin'
+                },
+                body: bundledHtml
+            };
+            
+        } catch (error) {
+            logger.error(error, { context: 'serveBundledHtml' });
+            
+            // フォールバック: 通常のindex.htmlを配信
+            return await this.serveRegularFile('/index.html');
+        }
+    }
+    
+    /**
+     * 通常ファイルを配信
+     */
+    async serveRegularFile(filePath) {
+        const fileResult = await this.readFile(filePath);
+        
+        if (!fileResult.exists) {
+            return this.createErrorResponse(404, 'File not found');
+        }
+        
+        const mimeType = this.getMimeType(filePath);
+        return this.createFileResponse(fileResult.content, mimeType, fileResult.isBase64);
     }
 
     /**
@@ -97,21 +166,16 @@ class StaticRouter {
     }
 
     /**
-     * ファイルのMIMEタイプを取得
+     * ファイルのMIMEタイプを取得（mime-typesなしで実装）
      */
     getMimeType(filePath) {
-        const detected = mime.lookup(filePath);
-        
-        if (detected) {
-            return detected;
-        }
-
-        // フォールバック
         const ext = path.extname(filePath).toLowerCase();
         const mimeMap = {
             '.html': 'text/html',
+            '.htm': 'text/html',
             '.css': 'text/css',
             '.js': 'application/javascript',
+            '.mjs': 'application/javascript',
             '.json': 'application/json',
             '.png': 'image/png',
             '.jpg': 'image/jpeg',
@@ -122,7 +186,19 @@ class StaticRouter {
             '.woff': 'font/woff',
             '.woff2': 'font/woff2',
             '.ttf': 'font/ttf',
-            '.eot': 'application/vnd.ms-fontobject'
+            '.otf': 'font/otf',
+            '.eot': 'application/vnd.ms-fontobject',
+            '.txt': 'text/plain',
+            '.xml': 'application/xml',
+            '.pdf': 'application/pdf',
+            '.zip': 'application/zip',
+            '.gz': 'application/gzip',
+            '.webp': 'image/webp',
+            '.mp4': 'video/mp4',
+            '.webm': 'video/webm',
+            '.mp3': 'audio/mpeg',
+            '.wav': 'audio/wav',
+            '.ogg': 'audio/ogg'
         };
 
         return mimeMap[ext] || 'application/octet-stream';
@@ -174,6 +250,7 @@ class StaticRouter {
             headers['X-Content-Type-Options'] = 'nosniff';
             headers['X-XSS-Protection'] = '1; mode=block';
             headers['Referrer-Policy'] = 'strict-origin-when-cross-origin';
+            headers['X-Bundle-Mode'] = this.bundleMode ? 'enabled' : 'disabled';
         }
 
         return {
@@ -269,7 +346,7 @@ class StaticRouter {
             return files;
 
         } catch (error) {
-            console.error('Error getting file list:', error);
+            logger.error(error, { context: 'getFileList' });
             return [];
         }
     }
@@ -290,21 +367,62 @@ class StaticRouter {
                 const result = await this.readFile(file);
                 fileChecks[file] = result.exists;
             }
+            
+            // バンドル情報
+            let bundleInfo = null;
+            if (this.bundleMode) {
+                try {
+                    const bundleStats = await this.bundler.getBundleStats();
+                    bundleInfo = {
+                        enabled: true,
+                        originalFiles: bundleStats?.original.fileCount || 0,
+                        bundledSize: bundleStats?.bundled.sizeFormatted || '0 KB',
+                        reduction: bundleStats?.optimization.reductionPercentage || '0%',
+                        cacheStats: this.bundler.getCacheStats()
+                    };
+                } catch (bundleError) {
+                    bundleInfo = {
+                        enabled: true,
+                        error: bundleError.message
+                    };
+                }
+            }
 
             return {
                 success: indexResult.exists && Object.values(fileChecks).every(exists => exists),
                 index_html: indexResult.exists,
                 files: fileChecks,
-                public_dir: this.publicDir
+                public_dir: this.publicDir,
+                bundle_mode: this.bundleMode,
+                bundle_info: bundleInfo
             };
 
         } catch (error) {
-            console.error('Static router health check error:', error);
+            logger.error(error, { context: 'Static router health check' });
             return {
                 success: false,
                 error: error.message
             };
         }
+    }
+
+    /**
+     * バンドルモードの切り替え
+     */
+    toggleBundleMode(enabled) {
+        this.bundleMode = enabled;
+        if (enabled) {
+            this.bundler.clearCache(); // キャッシュをクリアして新しいバンドルを作成
+        }
+        logger.info(`Bundle mode ${enabled ? 'enabled' : 'disabled'}`);
+    }
+    
+    /**
+     * バンドルキャッシュをクリア
+     */
+    clearBundleCache() {
+        this.bundler.clearCache();
+        logger.info('Bundle cache cleared');
     }
 }
 

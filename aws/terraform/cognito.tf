@@ -91,20 +91,8 @@ resource "aws_cognito_user_pool_domain" "github_analyzer_domain" {
   user_pool_id = aws_cognito_user_pool.github_analyzer[0].id
 }
 
-# API Gateway Cognito Authorizer
-resource "aws_apigatewayv2_authorizer" "cognito_authorizer" {
-  count = var.enable_cognito_auth ? 1 : 0
-  
-  api_id           = aws_apigatewayv2_api.github_analyzer_api.id
-  authorizer_type  = "JWT"
-  identity_sources = ["$request.header.Authorization"]
-  name             = "${local.name_prefix}-authorizer"
-
-  jwt_configuration {
-    audience = [aws_cognito_user_pool_client.github_analyzer_client[0].id]
-    issuer   = "https://cognito-idp.${local.region}.amazonaws.com/${aws_cognito_user_pool.github_analyzer[0].id}"
-  }
-}
+# Lambda Function URLsでは認証はIAMまたは無しのみサポート
+# Cognitoを使う場合はフロントエンドで直接認証を実装
 
 # メールドメイン制限用Lambda関数（条件付き作成）
 resource "aws_lambda_function" "email_domain_validator" {
@@ -171,12 +159,4 @@ resource "aws_lambda_permission" "cognito_lambda" {
   source_arn    = aws_cognito_user_pool.github_analyzer[0].arn
 }
 
-# CloudWatch Logs グループ（メール検証Lambda用）
-resource "aws_cloudwatch_log_group" "email_validator_logs" {
-  count = var.enable_cognito_auth && var.email_domain_restriction != "" ? 1 : 0
-  
-  name              = "/aws/lambda/${local.name_prefix}-email-validator"
-  retention_in_days = var.log_retention_days
-
-  tags = local.common_tags
-}
+# CloudWatch Logs は使用しない（S3にログ出力）

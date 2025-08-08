@@ -11,6 +11,7 @@ class GitHubAnalyzerController {
         this.tableBuilder = new TableBuilder();
         this.dateUtils = new DateUtils();
         this.notificationManager = new NotificationManager();
+        this.teamManager = new TeamManager(this.apiService, this.notificationManager);
 
         this.init();
     }
@@ -20,6 +21,7 @@ class GitHubAnalyzerController {
      */
     init() {
         this.setupEventListeners();
+        this.loadTeams();
         this.setDefaultDates();
         this.updateChart();
     }
@@ -42,6 +44,11 @@ class GitHubAnalyzerController {
         document.getElementById("monthly-btn")?.addEventListener("click", () => {
             this.handleMonthlyData();
         });
+
+        // チーム更新ボタン
+        document.getElementById("updateTeamsButton")?.addEventListener("click", () => {
+            this.updateTeamInfo();
+        });
     }
 
     /**
@@ -56,7 +63,8 @@ class GitHubAnalyzerController {
             return;
         }
 
-        this.fetchGithubData(fromDate, toDate);
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
     /**
@@ -65,7 +73,8 @@ class GitHubAnalyzerController {
     handleWeeklyData() {
         const toDate = this.dateUtils.getToday();
         const fromDate = this.dateUtils.getDaysAgo(7);
-        this.fetchGithubData(fromDate, toDate);
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
     /**
@@ -74,29 +83,32 @@ class GitHubAnalyzerController {
     handleMonthlyData() {
         const toDate = this.dateUtils.getToday();
         const fromDate = this.dateUtils.getDaysAgo(30);
-        this.fetchGithubData(fromDate, toDate);
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
     /**
      * GitHubデータを取得
      * @param {string} fromDate - 開始日
      * @param {string} toDate - 終了日
+     * @param {Array<string>} teams - チーム名の配列
+     * @param {Array<string>} users - ユーザー名の配列
      */
-    async fetchGithubData(fromDate, toDate) {
+    async fetchGithubData(fromDate, toDate, teams = [], users = []) {
         this.notificationManager.showLoading("Fetching data from Github...");
 
         try {
-            const data = await this.apiService.fetchData(fromDate, toDate);
+            const data = await this.apiService.fetchData(fromDate, toDate, teams, users);
 
             if (data.error) {
                 throw new Error(data.error);
             }
 
-            this.notificationManager.showSuccess();
+            this.notificationManager.showSuccess("Successfully data updated");
             this.updateChart();
         } catch (error) {
             console.error("Error:", error);
-            this.notificationManager.showError("データの取得に失敗しました");
+            this.notificationManager.showError("Failed to fetch or parse data");
         } finally {
             this.notificationManager.hideLoading();
         }
@@ -194,6 +206,20 @@ class GitHubAnalyzerController {
         } catch (error) {
             console.error("Error setting default dates:", error);
         }
+    }
+
+    /**
+     * チーム情報を読み込み
+     */
+    async loadTeams() {
+        await this.teamManager.loadTeams();
+    }
+
+    /**
+     * チーム情報を更新
+     */
+    async updateTeamInfo() {
+        await this.teamManager.updateTeamInfo();
     }
 }
 

@@ -31,4 +31,24 @@ class DateUtils {
     getToday() {
         return new Date().toISOString().split('T')[0];
     }
+
+    /**
+     * 2つの日付間の日数差を計算
+     * @param {string} date1 - 日付1 (YYYY-MM-DD)
+     * @param {string} date2 - 日付2 (YYYY-MM-DD)
+     * @returns {number} 日数差
+     */
+    dateDiffInDays(date1, date2) {
+        const dt1 = new Date(date1);
+        const dt2 = new Date(date2);
+
+        // UTC日付に変換（時差の影響を排除）
+        const utc1 = Date.UTC(dt1.getFullYear(), dt1.getMonth(), dt1.getDate());
+        const utc2 = Date.UTC(dt2.getFullYear(), dt2.getMonth(), dt2.getDate());
+
+        // 日数の差を計算（ミリ秒を日に変換）
+        const diffDays = Math.floor((utc2 - utc1) / (1000 * 60 * 60 * 24));
+
+        return diffDays;
+    }
 }

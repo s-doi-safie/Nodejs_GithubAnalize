@@ -9,6 +9,33 @@ class ChartManager {
     }
 
     /**
+     * チャートのタイトルを生成
+     * @param {Object} data - チャートデータ
+     * @param {string} fromDate - 開始日
+     * @param {string} toDate - 終了日
+     * @returns {string} タイトル文字列
+     */
+    getChartTitle(data, fromDate, toDate) {
+        let title = "Review Activity";
+
+        // チーム名が含まれている場合は、タイトルに追加
+        if (data.team) {
+            // カンマで区切られた複数のチーム名の場合
+            if (data.team.includes(",")) {
+                title += ` in ${data.team} Teams`;
+            } else {
+                title += ` in ${data.team} Team`;
+            }
+        } else {
+            title += " in All Teams";
+        }
+
+        title += ` from ${fromDate} to ${toDate}`;
+
+        return title;
+    }
+
+    /**
      * チャート設定オプションを作成
      * @param {Object} data - チャートデータ
      * @param {Function} onClickCallback - クリック時のコールバック
@@ -32,7 +59,7 @@ class ChartManager {
             plugins: {
                 title: {
                     display: true,
-                    text: `Review Activity in AI Vision from ${fromDate} to ${toDate}`,
+                    text: this.getChartTitle(data, fromDate, toDate),
                     font: { size: 20 }
                 },
                 tooltip: {

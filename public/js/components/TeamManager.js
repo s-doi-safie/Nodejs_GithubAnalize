@@ -6,6 +6,22 @@ class TeamManager {
         this.apiService = apiService;
         this.notificationManager = notificationManager;
         this.teams = {};
+        this.teamDropdown = null;
+        this.initDropdown();
+    }
+
+    /**
+     * ドロップダウンを初期化
+     */
+    initDropdown() {
+        this.teamDropdown = new MultiSelectDropdown('teamDropdown', {
+            placeholder: 'Select teams (All teams if none selected)',
+            searchPlaceholder: 'Search teams...',
+            selectAllText: 'Select All',
+            deselectAllText: 'Clear Selection',
+            noResultsText: 'No teams found',
+            selectedText: 'teams selected'
+        });
     }
 
     /**
@@ -15,11 +31,31 @@ class TeamManager {
         try {
             const data = await this.apiService.getTeams();
             this.teams = data.teams;
-            this.renderTeamCheckboxes();
+            this.updateDropdownItems();
             return this.teams;
         } catch (error) {
             console.error("Error loading teams:", error);
             this.notificationManager.showError("チーム情報の読み込みに失敗しました");
+        }
+    }
+
+    /**
+     * ドロップダウンのアイテムを更新
+     */
+    updateDropdownItems() {
+        const items = [];
+        
+        // チームをアイテムに変換
+        for (const [teamName, members] of Object.entries(this.teams)) {
+            items.push({
+                value: teamName,
+                label: `${teamName} (${members.length} members)`,
+                group: 'Teams'
+            });
+        }
+        
+        if (this.teamDropdown) {
+            this.teamDropdown.setItems(items);
         }
     }
 
@@ -49,94 +85,67 @@ class TeamManager {
     }
 
     /**
-     * チームのチェックボックスを描画
+     * 選択されたチームを取得
+     * @returns {Array<string>} 選択されたチーム名の配列
      */
-    renderTeamCheckboxes() {
-        const teamCheckboxes = document.getElementById("teamCheckboxes");
-        if (!teamCheckboxes) return;
-
-        // 既存のチェックボックスをクリア（「すべてのチーム」オプションは残す）
-        const allTeamsCheckbox = document.getElementById("team-all");
-        const allTeamsDiv = allTeamsCheckbox?.parentElement;
-        teamCheckboxes.innerHTML = "";
-        
-        if (allTeamsDiv) {
-            teamCheckboxes.appendChild(allTeamsDiv);
+    getSelectedTeams() {
+        if (!this.teamDropdown) {
+            return [];
         }
-
-        // 各チームのチェックボックスを追加
-        for (const teamName in this.teams) {
-            const teamDiv = document.createElement("div");
-            const checkbox = document.createElement("input");
-            checkbox.type = "checkbox";
-            checkbox.id = `team-${teamName}`;
-            checkbox.value = teamName;
-            checkbox.classList.add("team-checkbox");
-            
-            const label = document.createElement("label");
-            label.htmlFor = `team-${teamName}`;
-            label.textContent = teamName;
-            
-            teamDiv.appendChild(checkbox);
-            teamDiv.appendChild(label);
-            teamCheckboxes.appendChild(teamDiv);
-        }
-
-        this.setupCheckboxEventListeners();
+        return this.teamDropdown.getSelected();
     }
 
     /**
-     * チェックボックスのイベントリスナーを設定
+     * 選択されたチームを設定
+     * @param {Array<string>} teams - 設定するチーム名の配列
      */
-    setupCheckboxEventListeners() {
-        // 「すべてのチーム」チェックボックスのイベントリスナー
-        const allTeamsCheckbox = document.getElementById("team-all");
-        if (allTeamsCheckbox) {
-            allTeamsCheckbox.addEventListener("change", (e) => {
-                if (e.target.checked) {
-                    document.querySelectorAll(".team-checkbox").forEach((cb) => {
-                        cb.checked = false;
-                    });
-                }
-            });
+    setSelectedTeams(teams) {
+        if (this.teamDropdown) {
+            this.teamDropdown.setSelected(teams);
         }
-
-        // 個別チームのチェックボックスのイベントリスナー
-        document.querySelectorAll(".team-checkbox").forEach((checkbox) => {
-            checkbox.addEventListener("change", (e) => {
-                if (e.target.checked && allTeamsCheckbox) {
-                    allTeamsCheckbox.checked = false;
-                }
-            });
-        });
     }
 
     /**
      * 選択されたチームとユーザーを取得
+     * @param {UserManager} userManager - ユーザーマネージャー
      * @returns {Object} 選択されたチームとユーザー
      */
-    getSelectedTeamsAndUsers() {
-        // 選択されたチームを取得
-        const selectedTeams = [];
-        const allTeamsCheckbox = document.getElementById("team-all");
-        const allTeamsSelected = allTeamsCheckbox ? allTeamsCheckbox.checked : true;
+    getSelectedTeamsAndUsers(userManager) {
+        // 選択されたチーム を取得（何も選択されていない場合は全チーム扱い）
+        const selectedTeams = this.getSelectedTeams();
 
-        if (!allTeamsSelected) {
-            document.querySelectorAll(".team-checkbox:checked").forEach((cb) => {
-                selectedTeams.push(cb.value);
-            });
-        }
-
-        // 入力されたユーザーを取得
-        const usersInput = document.getElementById("usersInput");
-        const usersValue = usersInput ? usersInput.value : "";
-        const users = usersValue
-            ? usersValue
-                .split(",")
-                .map((u) => u.trim())
-                .filter((u) => u)
-            : [];
+        // 選択されたユーザーを取得
+        const users = userManager ? userManager.getSelectedUsers() : [];
 
         return { teams: selectedTeams, users };
+    }
+
+    /**
+     * ドロップダウンにイベントリスナーを追加
+     * @param {Function} callback - 選択が変更されたときのコールバック
+     */
+    onSelectionChange(callback) {
+        if (this.teamDropdown) {
+            const container = document.getElementById('teamDropdown');
+            container.addEventListener('change', callback);
+        }
+    }
+
+    /**
+     * ドロップダウンを無効化
+     */
+    disable() {
+        if (this.teamDropdown) {
+            this.teamDropdown.disable();
+        }
+    }
+
+    /**
+     * ドロップダウンを有効化
+     */
+    enable() {
+        if (this.teamDropdown) {
+            this.teamDropdown.enable();
+        }
     }
 }

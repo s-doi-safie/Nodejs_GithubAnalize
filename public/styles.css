@@ -261,3 +261,351 @@ h1 {
 .completed-toggle input[type="checkbox"] {
   margin-right: 5px;
 }
+
+/* Multi-select dropdown styles */
+.multi-select-dropdown {
+  position: relative;
+  min-width: 250px;
+  max-width: 400px;
+  font-size: 14px;
+}
+
+.multi-select-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.multi-select-header:hover {
+  border-color: #4caf50;
+}
+
+.multi-select-dropdown.open .multi-select-header {
+  border-color: #4caf50;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.multi-select-selected-display {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.multi-select-placeholder {
+  color: #999;
+}
+
+.multi-select-selected-count {
+  color: #333;
+  font-weight: 500;
+}
+
+.multi-select-arrow {
+  margin-left: 10px;
+  font-size: 10px;
+  color: #666;
+  transition: transform 0.3s;
+}
+
+.multi-select-dropdown.open .multi-select-arrow {
+  transform: rotate(180deg);
+}
+
+.multi-select-dropdown-content {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #4caf50;
+  border-top: none;
+  border-bottom-left-radius: 5px;
+  border-bottom-right-radius: 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 300px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.multi-select-search-container {
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-search {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 14px;
+}
+
+.multi-select-search:focus {
+  outline: none;
+  border-color: #4caf50;
+}
+
+.multi-select-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-actions button {
+  flex: 1;
+  padding: 6px 12px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.multi-select-actions button:hover {
+  background: #e0e0e0;
+}
+
+.multi-select-items-container {
+  flex: 1;
+  overflow-y: auto;
+  max-height: 200px;
+}
+
+.multi-select-items {
+  padding: 4px 0;
+}
+
+.multi-select-item {
+  display: flex;
+  align-items: center;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.multi-select-item:hover {
+  background-color: #f5f5f5;
+}
+
+.multi-select-item input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+}
+
+.multi-select-item label {
+  flex: 1;
+  cursor: pointer;
+  user-select: none;
+}
+
+.multi-select-group {
+  margin-bottom: 8px;
+}
+
+.multi-select-group-header {
+  padding: 6px 12px;
+  background-color: #f8f8f8;
+  font-weight: bold;
+  font-size: 12px;
+  color: #666;
+  text-transform: uppercase;
+  border-top: 1px solid #eee;
+  border-bottom: 1px solid #eee;
+}
+
+.multi-select-no-results {
+  padding: 20px;
+  text-align: center;
+  color: #999;
+}
+
+.multi-select-dropdown.disabled {
+  opacity: 0.6;
+}
+
+.multi-select-dropdown.disabled .multi-select-header {
+  cursor: not-allowed;
+}
+
+/* Team selection specific styles */
+.team-selection-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px;
+}
+
+.team-selection-label {
+  font-weight: 500;
+  color: #333;
+}
+
+#teamDropdown {
+  flex: 0 1 auto;
+}
+
+/* Autocomplete styles */
+.autocomplete-container {
+  position: relative;
+  width: 100%;
+}
+
+.autocomplete-input-wrapper {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: white;
+  cursor: text;
+  transition: border-color 0.3s;
+  min-height: 34px;
+}
+
+.autocomplete-input-wrapper:hover {
+  border-color: #4caf50;
+}
+
+.autocomplete-container.open .autocomplete-input-wrapper,
+.autocomplete-input-wrapper:focus-within {
+  border-color: #4caf50;
+}
+
+.autocomplete-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 14px;
+  min-width: 100px;
+  padding: 2px 0;
+}
+
+.autocomplete-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.autocomplete-tag {
+  display: flex;
+  align-items: center;
+  background-color: #e3f2fd;
+  border: 1px solid #2196f3;
+  border-radius: 16px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #1976d2;
+  max-width: 150px;
+}
+
+.autocomplete-tag-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.autocomplete-tag-remove {
+  background: none;
+  border: none;
+  color: #1976d2;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  margin-left: 4px;
+  padding: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.autocomplete-tag-remove:hover {
+  background-color: rgba(25, 118, 210, 0.1);
+}
+
+.autocomplete-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: white;
+  border: 1px solid #4caf50;
+  border-top: none;
+  border-radius: 0 0 5px 5px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.autocomplete-suggestion {
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.autocomplete-suggestion:last-child {
+  border-bottom: none;
+}
+
+.autocomplete-suggestion:hover,
+.autocomplete-suggestion.focused {
+  background-color: #f5f5f5;
+}
+
+.autocomplete-suggestion mark {
+  background-color: #ffeb3b;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
+.autocomplete-no-results {
+  padding: 12px;
+  text-align: center;
+  color: #999;
+  font-style: italic;
+}
+
+.autocomplete-container.disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* Users input specific styles */
+.users-input-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 10px;
+}
+
+.users-input-label {
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+}
+
+#usersAutocomplete {
+  flex: 1;
+  min-width: 200px;
+  max-width: 300px;
+}

@@ -12,6 +12,7 @@ class GitHubAnalyzerController {
         this.dateUtils = new DateUtils();
         this.notificationManager = new NotificationManager();
         this.teamManager = new TeamManager(this.apiService, this.notificationManager);
+        this.userManager = new UserManager(this.apiService);
 
         this.init();
     }
@@ -63,7 +64,7 @@ class GitHubAnalyzerController {
             return;
         }
 
-        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers(this.userManager);
         this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
@@ -73,7 +74,7 @@ class GitHubAnalyzerController {
     handleWeeklyData() {
         const toDate = this.dateUtils.getToday();
         const fromDate = this.dateUtils.getDaysAgo(7);
-        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers(this.userManager);
         this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
@@ -83,7 +84,7 @@ class GitHubAnalyzerController {
     handleMonthlyData() {
         const toDate = this.dateUtils.getToday();
         const fromDate = this.dateUtils.getDaysAgo(30);
-        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers();
+        const { teams, users } = this.teamManager.getSelectedTeamsAndUsers(this.userManager);
         this.fetchGithubData(fromDate, toDate, teams, users);
     }
 
@@ -120,6 +121,9 @@ class GitHubAnalyzerController {
     async updateChart() {
         try {
             const data = await this.apiService.getReviewData();
+
+            // ユーザー情報をPRデータから更新
+            await this.userManager.updateUsersFromPRData(data);
 
             // データ処理
             const filteredData = this.dataProcessor.filterNonMembers(data);
@@ -212,7 +216,20 @@ class GitHubAnalyzerController {
      * チーム情報を読み込み
      */
     async loadTeams() {
-        await this.teamManager.loadTeams();
+        const teams = await this.teamManager.loadTeams();
+        
+        // チームデータからユーザー情報を更新
+        if (teams) {
+            this.userManager.updateUsersFromTeams(teams);
+        }
+        
+        // ボット系ユーザーを除外
+        this.userManager.excludeUserPatterns([
+            'bot',
+            '[bot]',
+            'dependabot',
+            'github-actions'
+        ]);
     }
 
     /**

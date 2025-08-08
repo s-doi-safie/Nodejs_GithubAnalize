@@ -32,18 +32,14 @@
     <div class="container">
       <h1>GitHub PR Analysis</h1>
       <div class="input-container">
-        <a>teams</a>
-        <div class="team-selection">
-          <div id="teamCheckboxes">
-            <div>
-              <input type="checkbox" id="team-all" value="all" checked />
-              <label for="team-all">All Teams</label>
-            </div>
-            <!-- チームのチェックボックスはJavaScriptで動的に追加されます -->
-          </div>
+        <div class="team-selection-container">
+          <span class="team-selection-label">Teams:</span>
+          <div id="teamDropdown"></div>
         </div>
-        <a>users</a>
-        <input type="text" id="usersInput" placeholder="user1,user2,user3" />
+        <div class="users-input-container">
+          <span class="users-input-label">Users:</span>
+          <div id="usersAutocomplete"></div>
+        </div>
         <button id="updateTeamsButton">Team Update</button>
         <a>from</a>
         <input type="date" id="fromDateInput" />
@@ -108,7 +104,10 @@
     <script src="js/components/ChartManager.js"></script>
     <script src="js/components/ModalManager.js"></script>
     <script src="js/components/TableBuilder.js"></script>
+    <script src="js/components/MultiSelectDropdown.js"></script>
+    <script src="js/components/AutocompleteInput.js"></script>
     <script src="js/components/TeamManager.js"></script>
+    <script src="js/components/UserManager.js"></script>
     <script src="js/controllers/GitHubAnalyzerController.js"></script>
   </body>
 </html>

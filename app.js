@@ -1,20 +1,22 @@
 const express = require("express");
 const path = require("path");
 const cors = require("cors");
+const routes = require("./routes");
 const util = require("util");
 const fs = require("fs").promises;
 const { exec } = require("child_process");
 const { spawn } = require("child_process");
 
 const app = express();
-const port = 4001;
-// exec関数をPromiseベースの関数に変換
-const execPromise = util.promisify(exec);
+const port = 4000;
 
 // 静的ファイルの提供
 app.use(express.static("public"));
 app.use(cors());
 app.use(express.json());
+
+// execPromiseの定義
+const execPromise = util.promisify(exec);
 
 // チーム情報を提供するエンドポイント
 app.get("/api/teams", cors(), async (req, res) => {
@@ -89,7 +91,10 @@ app.get("/api/review-data", cors(), async (req, res) => {
   }
 });
 
+// ルートの設定（他のルートがある場合）
+app.use(routes);
+
 // サーバーの起動
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Server running at http://localhost:${port}`);
 });

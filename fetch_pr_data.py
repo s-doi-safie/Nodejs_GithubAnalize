@@ -10,7 +10,7 @@ from typing import Generator, Dict, List, Any, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import config as cfg
-import numpy as np  # 40 ms
+import numpy as np
 import requests
 # from holiday_jp import HolidayJp
 from tqdm import tqdm
@@ -36,9 +36,25 @@ class PullRequest:
         return self.closed is not None
 
     def elapsed(self) -> timedelta:
-        if self.closed is None:
-            return datetime.now().astimezone(ZoneInfo("Asia/Tokyo")) - self.created
-        return self.closed - self.created
+        end = self.closed or datetime.now().astimezone(ZoneInfo("Asia/Tokyo"))
+        return end - self.created
+
+    def calc_non_business_days(self, end_dt: datetime) -> int:
+        """
+        self.created から end_dt までの非営業日数を返す
+        """
+        non_business_days = 0
+        # for dt in self.daterange(self.created, end_dt):
+        #     if not HolidayJp(dt.date()).is_business_day:
+        #         non_business_days += 1
+        return non_business_days
+
+    def elapsed_business_time(self, end_dt: datetime) -> timedelta:
+        total_time = end_dt - self.created
+        non_business_days = self.calc_non_business_days(end_dt)
+        non_business_time = timedelta(hours=non_business_days * 24)
+        business_time = total_time - non_business_time
+        return business_time
 
     def elapsed_business_days(self) -> timedelta:
         if self.closed is None:
@@ -228,9 +244,7 @@ def get_requested_reviewers(
     else:
         response_json = pulls_api_cache[url]
 
-    reviewers = []
-    for reviewer in response_json["users"]:
-        reviewers.append(reviewer["login"])
+    reviewers = [reviewer["login"] for reviewer in response_json["users"]]
     return reviewers
 
 
@@ -242,7 +256,7 @@ def refresh_reviews_api_cache(
     pulls_api_cache: dict,
     refresh: bool,
 ) -> None:
-    # Use GET /repos/{owner}/{repo}/pulls/{pull_number}/reviews
+    # Use GET /repos/{owner}/{repo}/pulls/{pr_number}/reviews
 
     url = f"https://api.github.com/repos/{owner}/{repository}/pulls/{pr_number}/reviews"
 
@@ -315,8 +329,7 @@ def refresh_cache(url: str, api_cache: dict, token: str) -> None:
     if response.status_code != 200:
         print(response)
         sys.exit(1)
-    response_json = response.json()
-    api_cache[url] = response_json
+    api_cache[url] = response.json()
 
 
 def refresh_pulls_api_cache(
@@ -671,6 +684,11 @@ def main():
 
             # PR の情報を取得
             pull_request = get_pull_request(owner, repo_name, pr_number, author, pulls_api_cache)
+            
+            # PR がクローズされているがマージされていない場合はスキップ
+            if status == "closed" and not pull_request.is_merged:
+                continue
+            
             pull_request.first_review = get_first_person_review(owner, repo_name, pr_number, author, pulls_api_cache)
             pull_requests[author].append(pull_request)
 
@@ -680,22 +698,31 @@ def main():
             update_matrix_data(data, repo_name, pr_number, author, authors, requested, completed)
 
             # PR の詳細情報を取得
-            num_comments = pull_request.num_comments
-            lifetime_day = pull_request.elapsed_business_days().days
-            lifetime_hour = pull_request.elapsed_business_days().seconds // 3600
-            first_review_hour = int(pull_request.first_review_elapsed_business_days().total_seconds() // 3600)
-            first_review_min = int((pull_request.first_review_elapsed_business_days().total_seconds() % 3600) // 60)
+            closed_time = pull_request.closed or datetime.now().astimezone(ZoneInfo("Asia/Tokyo"))
+            lifetime = pull_request.elapsed_business_time(closed_time)
+            lifetime_day = lifetime.days
+            lifetime_hour = lifetime.seconds // 3600
+            
+            first_review_dt = pull_request.first_review or None
+            if first_review_dt:
+                first_review_time = pull_request.elapsed_business_time(first_review_dt)
+                first_review_hour = first_review_time.seconds // 3600
+                first_review_min = (first_review_time.seconds % 3600) // 60
+            else:
+                first_review_hour = None
+                first_review_min = None
 
             pr_detail = {
                 "author": author,
                 "title": title,
                 "html_url": html_url,
                 "status": status,
+                "is_merged": pull_request.is_merged,
                 "created_day": created_day,
                 "closed_day": closed_day,
                 "requested": requested,
                 "completed": completed,
-                "num_comments": num_comments,
+                "num_comments": pull_request.num_comments,
                 "lifetime_day": lifetime_day,
                 "lifetime_hour": lifetime_hour,
                 "first_review_hour": first_review_hour,
@@ -716,7 +743,7 @@ def main():
     for i in range(n):
         print(f"{authors[i]}: {author_count[i]}, {requested_count[i]}, {completed_count[i]}")
 
-    data = get_github_data(
+    data_json = get_github_data(
         authors,
         author_count,
         requested_count,
@@ -726,7 +753,7 @@ def main():
         pr_details,
         team_name,
     )
-    json.dump(data, open("github_data.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
+    json.dump(data_json, open("github_data.json", "w", encoding="utf-8"), indent=2, ensure_ascii=False)
 
 
 if __name__ == "__main__":
